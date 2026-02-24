@@ -141,7 +141,7 @@ STEP 3 — For each new action item NOT already in tasks.json:
     created     : current unix milliseconds (integer)
     auto        : true
     source      : "notes"
-    sourceDetail: "{source[:80]}"
+    sourceDetail: "{source[:80].replace(chr(34), "'")}"
 
 STEP 4 — Write the updated tasks.json using the Write tool.
   • Place tasks with no due date, or due on or before {today_str}, in "today" array.
@@ -232,6 +232,33 @@ def _remove_alive():
         pass
 
 
+# ── tasks.json integrity helpers ──────────────────────────────────────────────
+def _backup_tasks():
+    """Save a clean copy of tasks.json before each Claude run."""
+    try:
+        if TASKS_FILE.exists():
+            TASKS_FILE.with_name('tasks.json.backup').write_text(TASKS_FILE.read_text())
+    except Exception as e:
+        print(f'  ⚠  Could not back up tasks.json: {e}')
+
+
+def _validate_tasks_json():
+    """After Claude writes tasks.json, re-serialize with Python to fix any escaping issues.
+    If the file is corrupt, restore from the pre-run backup."""
+    try:
+        data = json.loads(TASKS_FILE.read_text())
+        # Valid JSON — re-write with Python's json.dumps to normalise any escaping
+        TASKS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        return True
+    except Exception as e:
+        print(f'  ⚠  tasks.json corrupted after Claude run: {e}')
+        backup = TASKS_FILE.with_name('tasks.json.backup')
+        if backup.exists():
+            TASKS_FILE.write_text(backup.read_text())
+            print(f'  ↩  Restored from tasks.json.backup (no tasks lost)')
+        return False
+
+
 # ── Slack scan (triggered by Scan Now button) ─────────────────────────────────
 def run_slack_scan():
     prompt = _build_slack_prompt()
@@ -241,12 +268,14 @@ def run_slack_scan():
         pass
 
     print(f'[{datetime.datetime.now():%H:%M:%S}] ▶  Slack scan (timeout 3 min)…')
+    _backup_tasks()
     ok, _ = _run_claude(
         prompt,
         tools=['Read', 'Write', SLACK_TOOL],
         label='Slack scan',
         timeout=180,
     )
+    _validate_tasks_json()
     if not ok:
         print(f'    ⚠  Fallback: paste {PROMPT_FILE} into Claude Code to scan manually.')
 
@@ -273,12 +302,14 @@ def process_ingest_queue():
             print(f'[{datetime.datetime.now():%H:%M:%S}] ▶  Extracting from: {short}…')
             prompt = _build_notes_prompt(text, source)
 
+            _backup_tasks()
             ok, _ = _run_claude(
                 prompt,
                 tools=['Read', 'Write'],   # notes extraction only needs file tools
                 label=f'Notes: {short}',
                 timeout=120,
             )
+            _validate_tasks_json()
             if ok:
                 item_path.unlink(missing_ok=True)
             else:

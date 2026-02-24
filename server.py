@@ -520,7 +520,7 @@ def scan_email():
         log(f'[email scan] {len(nums)} unread message(s) to check')
         for num in nums[-50:]:
             try:
-                _, msg_data = mail.fetch(num, '(RFC822)')
+                _, msg_data = mail.fetch(num, '(BODY.PEEK[])')
                 msg    = email_lib.message_from_bytes(msg_data[0][1])
                 msg_id = msg.get('Message-ID', '').strip()
                 if not msg_id or is_processed(f'email_{msg_id}'):
