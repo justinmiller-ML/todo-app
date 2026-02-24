@@ -1,0 +1,16 @@
+# Credentials — never commit these
+.env
+
+# Personal data
+tasks.json
+processed.json
+
+# Logs and temp files
+*.log
+*.err
+*.corrupt
+ingest-queue/
+trigger-scan/
+*.pyc
+__pycache__/
+.DS_Store

@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Daily Deliverables</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:              #0f1117;
+      --surface:         #1a1d27;
+      --surface2:        #22263a;
+      --border:          #2e3350;
+      --border-hover:    #3e4460;
+      --accent-today:    #4f8ef7;
+      --accent-long:     #a78bfa;
+      --text:            #e2e8f0;
+      --text-muted:      #64748b;
+      --danger:          #f87171;
+      --success:         #34d399;
+      --warn:            #fbbf24;
+      --radius:          10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 28px 20px 48px;
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    header { text-align: center; margin-bottom: 32px; }
+    header h1 { font-size: 1.7rem; font-weight: 700; letter-spacing: -.5px; }
+    .header-sub {
+      display: flex; align-items: center; justify-content: center;
+      gap: 20px; margin-top: 8px; flex-wrap: wrap;
+    }
+    .date-label { font-size: .83rem; color: var(--text-muted); }
+
+    /* Status chips */
+    .status-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
+    .chip {
+      font-size: .72rem; font-weight: 600; padding: 3px 10px;
+      border-radius: 99px; border: 1px solid var(--border);
+      color: var(--text-muted); display: flex; align-items: center; gap: 4px;
+      transition: all .15s;
+    }
+    .chip.on  { border-color: var(--success); color: var(--success); background: rgba(52,211,153,.08); }
+    .chip.off { border-color: var(--danger);  color: var(--danger);  background: rgba(248,113,113,.08); }
+    .chip.notif-btn { cursor: pointer; }
+    .chip.notif-btn:hover { background: var(--surface2); }
+    .chip.scanning { border-color: var(--warn); color: var(--warn); background: rgba(251,191,36,.08); animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.5 } }
+    .btn-test, .btn-scan {
+      font-size: .72rem; padding: 3px 10px; border-radius: 99px;
+      border: 1px solid var(--border); background: none;
+      color: var(--text-muted); cursor: pointer; transition: all .15s;
+    }
+    .btn-test:hover, .btn-scan:hover { color: var(--text); border-color: var(--border-hover); background: var(--surface2); }
+    .btn-scan.active { border-color: var(--warn); color: var(--warn); }
+    .scan-info { font-size: .68rem; color: var(--text-muted); }
+
+    /* ── Board ──────────────────────────────────────────────── */
+    .board {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 22px; max-width: 1080px; margin: 0 auto;
+    }
+    @media (max-width: 680px) { .board { grid-template-columns: 1fr; } }
+
+    .column {
+      background: var(--surface); border-radius: var(--radius);
+      border: 1px solid var(--border); padding: 22px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+
+    /* ── Column header ──────────────────────────────────────── */
+    .col-header { display: flex; align-items: center; justify-content: space-between; }
+    .col-title  { display: flex; align-items: center; gap: 9px; font-size: .97rem; font-weight: 600; }
+    .col-dot    { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .today    .col-dot  { background: var(--accent-today); }
+    .longterm .col-dot  { background: var(--accent-long); }
+    .badge {
+      font-size: .7rem; font-weight: 600; padding: 2px 8px;
+      border-radius: 99px; background: var(--surface2); color: var(--text-muted);
+    }
+    .col-actions { display: flex; gap: 6px; }
+    .col-btn {
+      font-size: .72rem; padding: 3px 9px; border-radius: 99px;
+      border: 1px solid var(--border); background: none;
+      color: var(--text-muted); cursor: pointer; transition: all .15s;
+    }
+    .col-btn:hover { color: var(--text); background: var(--surface2); border-color: var(--border-hover); }
+
+    /* ── Progress ───────────────────────────────────────────── */
+    .progress-bar { height: 3px; border-radius: 99px; background: var(--surface2); overflow: hidden; }
+    .progress-fill { height: 100%; border-radius: 99px; transition: width .35s ease; }
+    .today    .progress-fill { background: var(--accent-today); }
+    .longterm .progress-fill { background: var(--accent-long); }
+
+    /* ── Add row ────────────────────────────────────────────── */
+    .add-row { display: flex; gap: 7px; }
+    .add-row input {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 7px; color: var(--text); padding: 8px 11px;
+      font-size: .86rem; outline: none; transition: border-color .15s;
+    }
+    .today    .add-row input:focus { border-color: var(--accent-today); }
+    .longterm .add-row input:focus { border-color: var(--accent-long); }
+    .add-row input::placeholder { color: var(--text-muted); }
+    .btn-add {
+      border: none; border-radius: 7px; padding: 8px 13px;
+      font-size: 1rem; cursor: pointer; font-weight: 700;
+      transition: opacity .15s; line-height: 1; color: #fff;
+    }
+    .btn-add:hover { opacity: .85; }
+    .today    .btn-add { background: var(--accent-today); }
+    .longterm .btn-add { background: var(--accent-long); }
+
+    /* ── Options row ────────────────────────────────────────── */
+    .options-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .options-row label { font-size: .76rem; color: var(--text-muted); }
+    .options-row select,
+    .options-row input[type="date"] {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); padding: 4px 8px;
+      font-size: .76rem; outline: none; cursor: pointer;
+    }
+
+    /* ── Filter row ─────────────────────────────────────────── */
+    .filter-row { display: flex; gap: 5px; }
+    .filter-btn {
+      font-size: .73rem; padding: 3px 10px; border-radius: 99px;
+      border: 1px solid var(--border); background: none;
+      color: var(--text-muted); cursor: pointer; transition: all .15s;
+    }
+    .filter-btn:hover { color: var(--text); background: var(--surface2); border-color: var(--border-hover); }
+    .today    .filter-btn.active { border-color: var(--accent-today); color: var(--accent-today); background: rgba(79,142,247,.08); }
+    .longterm .filter-btn.active { border-color: var(--accent-long);  color: var(--accent-long);  background: rgba(167,139,250,.08); }
+
+    /* ── Task list ──────────────────────────────────────────── */
+    .task-list { display: flex; flex-direction: column; gap: 7px; min-height: 60px; }
+    .task-list.drag-over { border-radius: 8px; outline: 2px dashed var(--border-hover); outline-offset: 4px; }
+
+    /* ── Task ───────────────────────────────────────────────── */
+    .task {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 11px;
+      display: flex; align-items: flex-start; gap: 8px;
+      transition: border-color .15s, opacity .2s, box-shadow .15s;
+      cursor: grab; user-select: none;
+      position: relative;
+    }
+    .task:hover       { border-color: var(--border-hover); }
+    .task.done        { opacity: .42; }
+    .task.dragging    { opacity: .25; cursor: grabbing; }
+    .task:active      { cursor: grabbing; }
+
+    /* Drop indicator lines */
+    .task.drop-above { box-shadow: 0 -2px 0 0 var(--drop-clr, var(--accent-today)); }
+    .task.drop-below { box-shadow: 0 2px 0 0 var(--drop-clr, var(--accent-today)); }
+    .today    .task.drop-above,
+    .today    .task.drop-below { --drop-clr: var(--accent-today); }
+    .longterm .task.drop-above,
+    .longterm .task.drop-below { --drop-clr: var(--accent-long); }
+
+    /* Drag handle */
+    .drag-handle {
+      color: #3a3f58; font-size: .85rem; flex-shrink: 0;
+      margin-top: 1px; line-height: 1; transition: color .15s;
+      padding: 1px 0;
+    }
+    .task:hover .drag-handle { color: var(--text-muted); }
+
+    /* Checkbox */
+    .task-check {
+      width: 17px; height: 17px; border-radius: 5px;
+      border: 2px solid var(--border); cursor: pointer; flex-shrink: 0;
+      margin-top: 1px; display: flex; align-items: center; justify-content: center;
+      transition: background .15s, border-color .15s; background: transparent;
+    }
+    .task-check:hover { border-color: var(--border-hover); }
+    .today    .task-check.checked { background: var(--accent-today); border-color: var(--accent-today); }
+    .longterm .task-check.checked { background: var(--accent-long);  border-color: var(--accent-long); }
+    .task-check svg { display: none; }
+    .task-check.checked svg { display: block; }
+
+    /* Body */
+    .task-body { flex: 1; min-width: 0; }
+    .task-text { font-size: .86rem; line-height: 1.45; word-break: break-word; }
+    .task.done .task-text { text-decoration: line-through; }
+    .task-meta { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; align-items: center; }
+
+    /* Tags */
+    .tag { font-size: .68rem; padding: 1px 7px; border-radius: 99px; font-weight: 600; }
+    .tag-high   { background: rgba(248,113,113,.15); color: var(--danger); }
+    .tag-medium { background: rgba(251,191,36,.15);  color: var(--warn); }
+    .tag-low    { background: rgba(52,211,153,.15);  color: var(--success); }
+    .tag-due    { font-size: .68rem; color: var(--text-muted); }
+    .tag-due.overdue { color: var(--danger); }
+
+    /* Action buttons */
+    .task-actions { display: flex; gap: 3px; opacity: 0; transition: opacity .15s; flex-shrink: 0; }
+    .task:hover .task-actions { opacity: 1; }
+    .task-btn {
+      background: none; border: none; cursor: pointer; color: var(--text-muted);
+      padding: 3px 4px; border-radius: 4px; font-size: .75rem;
+      display: flex; align-items: center; transition: color .15s, background .15s;
+    }
+    .task-btn:hover     { color: var(--text); background: var(--border); }
+    .task-btn.del:hover { color: var(--danger); }
+
+    /* Buttons on task must not drag */
+    .task-check, .task-btn { cursor: pointer; }
+
+    /* ── Auto-detected task badge ───────────────────────────── */
+    .source-badge {
+      font-size: .65rem; font-weight: 600; padding: 1px 6px;
+      border-radius: 99px; display: inline-flex; align-items: center; gap: 3px;
+      border: 1px solid;
+    }
+    .source-badge.email { background: rgba(79,142,247,.1);  color: #4f8ef7; border-color: rgba(79,142,247,.3); }
+    .source-badge.slack { background: rgba(74,21,75,.2);    color: #c084fc; border-color: rgba(192,132,252,.3); }
+    .source-badge.gong  { background: rgba(248,113,113,.1); color: #f87171; border-color: rgba(248,113,113,.3); }
+    .task.auto-task { border-left: 2px solid rgba(251,191,36,.4); }
+
+    /* ── Source-detail line ─────────────────────────────────── */
+    .task-source-detail {
+      font-size: .72rem; color: var(--text-muted);
+      margin-top: 5px; display: flex; align-items: center; gap: 5px;
+      line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .task-source-detail .sd-icon {
+      flex-shrink: 0; font-size: .68rem; font-weight: 700;
+      padding: 1px 5px; border-radius: 99px; border: 1px solid;
+    }
+    .email .task-source-detail .sd-icon { color: #4f8ef7; border-color: rgba(79,142,247,.35); background: rgba(79,142,247,.1); }
+    .slack .task-source-detail .sd-icon { color: #c084fc; border-color: rgba(192,132,252,.35); background: rgba(74,21,75,.2); }
+    .gong  .task-source-detail .sd-icon { color: #f87171; border-color: rgba(248,113,113,.35); background: rgba(248,113,113,.1); }
+    .task-source-detail .sd-text { overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── Empty state ────────────────────────────────────────── */
+    .empty {
+      text-align: center; color: var(--text-muted); font-size: .8rem;
+      padding: 26px 0; border: 1px dashed var(--border); border-radius: 8px;
+      pointer-events: none;
+    }
+
+    /* ── Toast ──────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+      background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+      padding: 9px 18px; font-size: .82rem; color: var(--text);
+      opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 200;
+      white-space: nowrap;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ── Confetti canvas ────────────────────────────────────── */
+    #confetti { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 999; }
+
+    /* ── Notes source badge ─────────────────────────────────── */
+    .source-badge.notes { background: rgba(52,211,153,.1); color: #34d399; border-color: rgba(52,211,153,.3); }
+    .notes .task-source-detail .sd-icon { color: #34d399; border-color: rgba(52,211,153,.35); background: rgba(52,211,153,.1); }
+
+    /* ── Add Notes button ───────────────────────────────────── */
+    .btn-notes {
+      font-size: .72rem; padding: 3px 10px; border-radius: 99px;
+      border: 1px solid var(--border); background: none;
+      color: var(--text-muted); cursor: pointer; transition: all .15s;
+    }
+    .btn-notes:hover { color: var(--success); border-color: var(--success); background: rgba(52,211,153,.07); }
+    .btn-notes.open  { color: var(--success); border-color: var(--success); background: rgba(52,211,153,.1); }
+
+    /* ── Ingest panel ───────────────────────────────────────── */
+    .ingest-wrap {
+      max-width: 1080px; margin: 0 auto 24px;
+      overflow: hidden;
+      transition: max-height .32s ease, opacity .28s ease;
+      max-height: 0; opacity: 0; pointer-events: none;
+    }
+    .ingest-wrap.open { max-height: 700px; opacity: 1; pointer-events: auto; }
+
+    .ingest-panel {
+      background: var(--surface); border: 1px solid rgba(52,211,153,.3);
+      border-radius: var(--radius); padding: 20px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .ingest-header {
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: .86rem; font-weight: 600; color: var(--text);
+    }
+    .ingest-close {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      font-size: .9rem; padding: 2px 6px; border-radius: 4px; transition: color .15s;
+    }
+    .ingest-close:hover { color: var(--danger); }
+
+    .ingest-source-row { display: flex; align-items: center; gap: 10px; }
+    .ingest-source-row label { font-size: .78rem; color: var(--text-muted); flex-shrink: 0; }
+    .ingest-source-row input {
+      flex: 1; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 7px; color: var(--text); padding: 7px 11px;
+      font-size: .84rem; outline: none; transition: border-color .15s;
+    }
+    .ingest-source-row input:focus { border-color: var(--success); }
+    .ingest-source-row input::placeholder { color: var(--text-muted); }
+
+    .ingest-drop-zone {
+      border: 2px dashed var(--border); border-radius: 8px; padding: 16px;
+      text-align: center; cursor: pointer; transition: all .2s;
+      color: var(--text-muted); font-size: .83rem; line-height: 1.9;
+    }
+    .ingest-drop-zone:hover, .ingest-drop-zone.drag-active {
+      border-color: var(--success); background: rgba(52,211,153,.05); color: var(--text);
+    }
+    .ingest-drop-icon { font-size: 1.4rem; display: block; margin-bottom: 2px; }
+
+    .ingest-divider {
+      text-align: center; font-size: .74rem; color: var(--text-muted);
+      position: relative; line-height: 1;
+    }
+    .ingest-divider::before, .ingest-divider::after {
+      content: ''; position: absolute; top: 50%; width: 40%; height: 1px;
+      background: var(--border);
+    }
+    .ingest-divider::before { left: 0; }
+    .ingest-divider::after  { right: 0; }
+
+    .ingest-textarea {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); padding: 10px 12px;
+      font-size: .83rem; font-family: inherit; resize: vertical;
+      min-height: 100px; outline: none; transition: border-color .15s; line-height: 1.5;
+    }
+    .ingest-textarea:focus { border-color: var(--success); }
+    .ingest-textarea::placeholder { color: var(--text-muted); }
+
+    .ingest-footer { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .btn-extract {
+      background: var(--success); color: #0f1117; border: none; border-radius: 7px;
+      padding: 8px 18px; font-size: .84rem; font-weight: 700;
+      cursor: pointer; transition: opacity .15s; flex-shrink: 0;
+    }
+    .btn-extract:hover    { opacity: .85; }
+    .btn-extract:disabled { opacity: .45; cursor: not-allowed; }
+    .ingest-hint         { font-size: .75rem; color: var(--text-muted); }
+    .ingest-status           { font-size: .78rem; }
+    .ingest-status.is-ok     { color: var(--success); }
+    .ingest-status.is-err    { color: var(--danger); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Daily Deliverables</h1>
+  <div class="header-sub">
+    <span class="date-label" id="dateLabel"></span>
+    <div class="status-bar" id="statusBar"></div>
+    <button id="scanBtn" class="btn-scan" onclick="triggerScan()">⟳ Scan now</button>
+    <button id="notesBtn" class="btn-notes" onclick="toggleIngest()">📋 Add Notes</button>
+    <span id="scanInfo" class="scan-info"></span>
+  </div>
+</header>
+
+<!-- Notes ingestion panel (collapsed by default) -->
+<div id="ingestWrap" class="ingest-wrap">
+  <div class="ingest-panel">
+    <div class="ingest-header">
+      <span>📋 Add Meeting Notes or Call Transcript</span>
+      <button class="ingest-close" onclick="toggleIngest()" title="Close">✕</button>
+    </div>
+
+    <div class="ingest-source-row">
+      <label>Source:</label>
+      <input id="ingestSource" type="text"
+             placeholder="e.g. Gong: Infineon Onboarding Feb 25  |  Meeting: DL Weekly Feb 23" />
+    </div>
+
+    <!-- File drop zone -->
+    <div id="ingestDrop" class="ingest-drop-zone"
+         onclick="document.getElementById('ingestFile').click()"
+         ondragover="event.preventDefault(); this.classList.add('drag-active')"
+         ondragleave="this.classList.remove('drag-active')"
+         ondrop="handleFileDrop(event)">
+      <input type="file" id="ingestFile" accept=".txt,.md,.pdf,.docx,.doc" style="display:none"
+             onchange="handleFileSelect(event)" />
+      <span class="ingest-drop-icon">📄</span>
+      <span id="ingestDropLabel">Drop a file here (.txt, .md, .pdf, .docx), or click to browse</span>
+    </div>
+
+    <div class="ingest-divider">— or paste notes directly —</div>
+
+    <textarea id="ingestText" class="ingest-textarea"
+              placeholder="Paste meeting notes, a Gong transcript export, Gemini notes, or any text containing action items for Justin…"></textarea>
+
+    <div class="ingest-footer">
+      <button class="btn-extract" id="extractBtn" onclick="submitNotes()">
+        Extract Action Items →
+      </button>
+      <span class="ingest-hint">Processed by Claude via scan-companion.py</span>
+      <span id="ingestStatus" class="ingest-status"></span>
+    </div>
+  </div>
+</div>
+
+<div class="board">
+  <!-- TODAY ──────────────────────────────────────────────────── -->
+  <div class="column today">
+    <div class="col-header">
+      <div class="col-title">
+        <div class="col-dot"></div>
+        Today
+        <span class="badge" id="todayBadge">0/0</span>
+      </div>
+      <div class="col-actions">
+        <button class="col-btn" onclick="sortByPriority('today')">Sort priority</button>
+        <button class="col-btn" onclick="clearDone('today')">Clear done</button>
+      </div>
+    </div>
+
+    <div class="progress-bar"><div class="progress-fill" id="todayProgress" style="width:0%"></div></div>
+
+    <div class="add-row">
+      <input id="todayInput" type="text" placeholder="Add a task for today…" />
+      <button class="btn-add" onclick="addTask('today')">+</button>
+    </div>
+    <div class="options-row">
+      <label>Priority:</label>
+      <select id="todayPriority">
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        <option value="low">Low</option>
+      </select>
+    </div>
+    <div class="filter-row">
+      <button class="filter-btn active" data-col="today" data-filter="all">All</button>
+      <button class="filter-btn" data-col="today" data-filter="active">Active</button>
+      <button class="filter-btn" data-col="today" data-filter="done">Done</button>
+    </div>
+
+    <div class="task-list" id="todayList"></div>
+  </div>
+
+  <!-- LONG-TERM ──────────────────────────────────────────────── -->
+  <div class="column longterm">
+    <div class="col-header">
+      <div class="col-title">
+        <div class="col-dot"></div>
+        Long-term
+        <span class="badge" id="longtermBadge">0/0</span>
+      </div>
+      <div class="col-actions">
+        <button class="col-btn" onclick="sortByPriority('longterm')">Sort priority</button>
+        <button class="col-btn" onclick="clearDone('longterm')">Clear done</button>
+      </div>
+    </div>
+
+    <div class="progress-bar"><div class="progress-fill" id="longtermProgress" style="width:0%"></div></div>
+
+    <div class="add-row">
+      <input id="longtermInput" type="text" placeholder="Add a long-term goal…" />
+      <button class="btn-add" onclick="addTask('longterm')">+</button>
+    </div>
+    <div class="options-row">
+      <label>Priority:</label>
+      <select id="longtermPriority">
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+        <option value="low">Low</option>
+      </select>
+      <label>Due:</label>
+      <input type="date" id="longtermDue" />
+    </div>
+    <div class="filter-row">
+      <button class="filter-btn active" data-col="longterm" data-filter="all">All</button>
+      <button class="filter-btn" data-col="longterm" data-filter="active">Active</button>
+      <button class="filter-btn" data-col="longterm" data-filter="done">Done</button>
+    </div>
+
+    <div class="task-list" id="longtermList"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<canvas id="confetti"></canvas>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────────
+let state   = { today: [], longterm: [] };
+let filters = { today: 'all', longterm: 'all' };
+let dragState = null;   // { col, id } while drag is in progress
+
+// ── Init ───────────────────────────────────────────────────────────────────────
+async function init() {
+  document.getElementById('dateLabel').textContent = new Date().toLocaleDateString('en-US', {
+    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+  });
+
+  state = await fetchTasks();
+  renderBoth();
+  setupDragListeners('today');
+  setupDragListeners('longterm');
+  await loadConfig();
+  scheduleLocalNotification();
+  await requestNotifPermission();
+}
+
+// ── API ────────────────────────────────────────────────────────────────────────
+async function fetchTasks() {
+  try {
+    const r = await fetch('/api/tasks');
+    return await r.json();
+  } catch { return { today: [], longterm: [] }; }
+}
+
+function pushTasks() {
+  fetch('/api/tasks', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(state),
+  }).catch(() => {});
+}
+
+async function loadConfig() {
+  try {
+    const cfg = await fetch('/api/config').then(r => r.json());
+    renderStatusBar(cfg);
+  } catch { renderStatusBar({ email: false, slack: false }); }
+}
+
+async function testReminders() {
+  try {
+    await fetch('/api/test-reminders', { method: 'POST' });
+    toast('Test reminder sent!');
+  } catch { toast('Server not reachable.'); }
+}
+
+// ── Status bar ─────────────────────────────────────────────────────────────────
+function renderStatusBar(cfg) {
+  const notifOk      = typeof Notification !== 'undefined' && Notification.permission === 'granted';
+  const notifPending = typeof Notification !== 'undefined' && Notification.permission === 'default';
+  const scanning     = cfg.scanStatus?.state === 'running';
+
+  const scannerChips = [
+    cfg.emailScan ? '<span class="chip on" title="Auto-scanning your inbox">✉ Inbox scan ✓</span>' : '',
+    cfg.slackScan ? '<span class="chip on" title="Auto-scanning Slack mentions">◈ Slack scan ✓</span>' : '',
+    cfg.gongScan  ? '<span class="chip on" title="Auto-scanning Gong transcripts">📞 Gong scan ✓</span>' : '',
+    !cfg.ai       ? '<span class="chip off" title="Add ANTHROPIC_API_KEY to .env to enable auto-scanning">🤖 AI off</span>' : '',
+  ].filter(Boolean).join('');
+
+  document.getElementById('statusBar').innerHTML = `
+    <span class="chip ${cfg.email ? 'on' : 'off'}" title="Email reminders">✉ Email</span>
+    <span class="chip ${cfg.slack ? 'on' : 'off'}" title="Slack reminders">◈ Slack</span>
+    <span class="chip ${notifOk ? 'on' : 'off'} notif-btn"
+          title="${notifPending ? 'Click to enable browser notifications' : 'Browser notifications'}"
+          onclick="requestNotifPermission()">
+      🔔 ${notifOk ? 'Notifs on' : 'Notifs off'}
+    </span>
+    ${scannerChips}
+    ${scanning ? '<span class="chip scanning">⟳ Scanning…</span>' : ''}
+  `;
+
+  // Update scan button & last-scan info (these live outside statusBar)
+  const btn  = document.getElementById('scanBtn');
+  const info = document.getElementById('scanInfo');
+  if (btn)  { btn.classList.toggle('active', scanning); btn.disabled = scanning;
+               btn.textContent = scanning ? '⟳ Scanning…' : '⟳ Scan now'; }
+  if (info && cfg.scanStatus?.last) {
+    const t = new Date(cfg.scanStatus.last);
+    info.textContent = `Last scan: ${t.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`;
+  }
+}
+
+// ── Manual scan trigger ────────────────────────────────────────────────────────
+async function triggerScan() {
+  const btn = document.getElementById('scanBtn');
+  if (btn) { btn.disabled = true; btn.textContent = '⟳ Starting…'; }
+  try {
+    const r = await fetch('/api/scan', { method: 'POST' });
+    const d = await r.json();
+    if (d.ok) {
+      toast('Scan started — new action items will appear automatically');
+      // Poll config every 3s while scanning
+      const poll = setInterval(async () => {
+        const cfg = await fetch('/api/config').then(r => r.json());
+        renderStatusBar(cfg);
+        if (cfg.scanStatus?.state !== 'running') {
+          clearInterval(poll);
+          renderBoth();   // refresh task list in case new items arrived
+        }
+      }, 3000);
+    } else {
+      toast(d.msg || 'Scan already in progress');
+    }
+  } catch { toast('Could not reach server'); }
+}
+
+// ── Browser notification at 3pm ────────────────────────────────────────────────
+async function requestNotifPermission() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    await Notification.requestPermission();
+    await loadConfig();
+  }
+}
+
+function scheduleLocalNotification() {
+  const now    = new Date();
+  const target = new Date(now);
+  target.setHours(15, 0, 0, 0);
+  if (now >= target) return;
+
+  const delay = target - now;
+  setTimeout(async () => {
+    const latest    = await fetchTasks();
+    const incomplete = latest.today.filter(t => !t.done);
+    if (!incomplete.length || Notification.permission !== 'granted') return;
+
+    const lines = incomplete.slice(0, 5).map(t => `• ${t.text}`).join('\n');
+    new Notification(`⏰ 3pm: ${incomplete.length} task(s) still open`, {
+      body: lines + (incomplete.length > 5 ? `\n…and ${incomplete.length - 5} more` : ''),
+      tag:  'todo-3pm',
+    });
+  }, delay);
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────────
+function renderBoth() {
+  if (dragState) return;
+  render('today');
+  render('longterm');
+}
+
+function render(col) {
+  const tasks    = state[col];
+  const filter   = filters[col];
+  const done     = tasks.filter(t => t.done);
+  const pct      = tasks.length ? Math.round(done.length / tasks.length * 100) : 0;
+
+  document.getElementById(`${col}Badge`).textContent    = `${done.length}/${tasks.length}`;
+  document.getElementById(`${col}Progress`).style.width = `${pct}%`;
+
+  let visible = tasks;
+  if (filter === 'active') visible = tasks.filter(t => !t.done);
+  if (filter === 'done')   visible = done;
+
+  const list = document.getElementById(`${col}List`);
+  if (!visible.length) {
+    list.innerHTML = `<div class="empty">${
+      filter === 'done' ? 'Nothing completed yet.' :
+      filter === 'active' ? 'All done! 🎉' : 'No tasks yet.'
+    }</div>`;
+    return;
+  }
+  list.innerHTML = visible.map(t => taskHTML(col, t)).join('');
+}
+
+function taskHTML(col, t) {
+  const todayStr = new Date().toISOString().split('T')[0];
+  let dueTag = '';
+  if (t.due) {
+    const overdue = !t.done && t.due < todayStr;
+    dueTag = `<span class="tag-due ${overdue ? 'overdue' : ''}">${overdue ? '⚠ ' : ''}Due ${fmtDate(t.due)}</span>`;
+  }
+  const moveIcon  = col === 'today' ? '↗' : '↙';
+  const moveTitle = col === 'today' ? 'Move to Long-term' : 'Move to Today';
+  const moveTo    = col === 'today' ? 'longterm' : 'today';
+
+  // Source badge (icon only) + detail line for auto-detected tasks
+  let sourceBadge  = '';
+  let sourceDetail = '';
+  if (t.auto && t.source) {
+    const icons = { email: '✉', slack: '◈', gong: '📞', notes: '📋' };
+    const icon  = icons[t.source] || '🤖';
+    sourceBadge = `<span class="source-badge ${t.source}" title="${t.source}">${icon}</span>`;
+    if (t.sourceDetail) {
+      sourceDetail = `
+        <div class="task-source-detail">
+          <span class="sd-icon">${icon} ${t.source}</span>
+          <span class="sd-text">${esc(t.sourceDetail)}</span>
+        </div>`;
+    }
+  }
+
+  return `
+    <div class="task ${t.done ? 'done' : ''} ${t.auto ? 'auto-task ' + (t.source||'') : ''}" data-id="${t.id}" data-col="${col}" draggable="true">
+      <div class="drag-handle">⠿</div>
+      <div class="task-check ${t.done ? 'checked' : ''}"
+           onclick="event.stopPropagation(); toggleDone('${col}','${t.id}')">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+          <polyline points="1.5,5 4,7.5 8.5,2.5" stroke="white" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div class="task-body">
+        <div class="task-text">${esc(t.text)}</div>
+        <div class="task-meta">
+          <span class="tag tag-${t.priority}">${t.priority}</span>
+          ${dueTag}
+        </div>
+        ${sourceDetail}
+      </div>
+      <div class="task-actions">
+        <button class="task-btn" title="${moveTitle}"
+                onclick="event.stopPropagation(); moveTask('${col}','${t.id}','${moveTo}')">${moveIcon}</button>
+        <button class="task-btn del" title="Delete"
+                onclick="event.stopPropagation(); deleteTask('${col}','${t.id}')">✕</button>
+      </div>
+    </div>`;
+}
+
+// ── Task actions ───────────────────────────────────────────────────────────────
+function addTask(col) {
+  const input    = document.getElementById(`${col}Input`);
+  const priority = document.getElementById(`${col}Priority`).value;
+  const due      = col === 'longterm' ? (document.getElementById('longtermDue').value || null) : null;
+  const text     = input.value.trim();
+  if (!text) return;
+
+  state[col].push({ id: uid(), text, priority, due, done: false, created: Date.now() });
+  pushTasks();
+  render(col);
+  input.value = '';
+  input.focus();
+}
+
+function toggleDone(col, id) {
+  const t = state[col].find(x => x.id === id);
+  if (!t) return;
+  t.done = !t.done;
+  pushTasks();
+  render(col);
+  if (t.done) confetti();
+}
+
+function deleteTask(col, id) {
+  state[col] = state[col].filter(x => x.id !== id);
+  pushTasks();
+  render(col);
+}
+
+function moveTask(from, id, to) {
+  const idx = state[from].findIndex(x => x.id === id);
+  if (idx === -1) return;
+  const [task] = state[from].splice(idx, 1);
+  if (to === 'today') task.due = null;
+  state[to].push(task);
+  pushTasks();
+  renderBoth();
+  toast(`Task moved to ${to === 'today' ? 'Today' : 'Long-term'}`);
+}
+
+function sortByPriority(col) {
+  const order = { high: 0, medium: 1, low: 2 };
+  state[col].sort((a, b) => {
+    if (a.done !== b.done) return a.done ? 1 : -1;
+    return (order[a.priority] ?? 1) - (order[b.priority] ?? 1);
+  });
+  pushTasks();
+  render(col);
+}
+
+function clearDone(col) {
+  const count = state[col].filter(t => t.done).length;
+  if (!count) { toast('No completed tasks to clear.'); return; }
+  state[col] = state[col].filter(t => !t.done);
+  pushTasks();
+  render(col);
+  toast(`Cleared ${count} completed task(s).`);
+}
+
+// ── Drag and drop ──────────────────────────────────────────────────────────────
+function setupDragListeners(col) {
+  const list = document.getElementById(`${col}List`);
+
+  list.addEventListener('dragstart', e => {
+    // Don't drag if clicking a button or checkbox
+    if (e.target.closest('button, .task-check')) { e.preventDefault(); return; }
+    const task = e.target.closest('.task[data-id]');
+    if (!task) return;
+
+    dragState = { col, id: task.dataset.id };
+    e.dataTransfer.effectAllowed = 'move';
+    // Defer so the dragging class doesn't affect the drag ghost image
+    setTimeout(() => task.classList.add('dragging'), 0);
+  });
+
+  list.addEventListener('dragend', () => {
+    document.querySelectorAll('.task.dragging, .task.drop-above, .task.drop-below')
+            .forEach(el => el.classList.remove('dragging', 'drop-above', 'drop-below'));
+    document.querySelectorAll('.task-list.drag-over')
+            .forEach(el => el.classList.remove('drag-over'));
+    dragState = null;
+  });
+
+  list.addEventListener('dragover', e => {
+    if (!dragState) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    // Clear all indicators
+    document.querySelectorAll('.task.drop-above, .task.drop-below')
+            .forEach(el => el.classList.remove('drop-above', 'drop-below'));
+
+    const task = e.target.closest('.task[data-id]');
+    if (task && task.dataset.id !== dragState.id) {
+      const rect   = task.getBoundingClientRect();
+      const before = e.clientY < rect.top + rect.height / 2;
+      task.classList.add(before ? 'drop-above' : 'drop-below');
+    } else if (!task) {
+      // Hovering over empty area of the list
+      list.classList.add('drag-over');
+    }
+  });
+
+  list.addEventListener('dragleave', e => {
+    if (!list.contains(e.relatedTarget)) {
+      document.querySelectorAll('.task.drop-above, .task.drop-below')
+              .forEach(el => el.classList.remove('drop-above', 'drop-below'));
+      list.classList.remove('drag-over');
+    }
+  });
+
+  list.addEventListener('drop', e => {
+    e.preventDefault();
+    list.classList.remove('drag-over');
+    document.querySelectorAll('.task.drop-above, .task.drop-below')
+            .forEach(el => el.classList.remove('drop-above', 'drop-below'));
+
+    if (!dragState) return;
+
+    const fromCol = dragState.col;
+    const fromId  = dragState.id;
+    const toCol   = col;
+
+    const srcIdx = state[fromCol].findIndex(t => t.id === fromId);
+    if (srcIdx === -1) return;
+    const [movedTask] = state[fromCol].splice(srcIdx, 1);
+
+    // Clear due date when moving to Today
+    if (toCol === 'today') movedTask.due = null;
+
+    const targetTask = e.target.closest('.task[data-id]');
+    if (targetTask && targetTask.dataset.id !== fromId) {
+      const toId     = targetTask.dataset.id;
+      const rect     = targetTask.getBoundingClientRect();
+      const before   = e.clientY < rect.top + rect.height / 2;
+      const dstIdx   = state[toCol].findIndex(t => t.id === toId);
+      state[toCol].splice(before ? dstIdx : dstIdx + 1, 0, movedTask);
+    } else {
+      state[toCol].push(movedTask);
+    }
+
+    pushTasks();
+    renderBoth();
+  });
+}
+
+// ── Filters ────────────────────────────────────────────────────────────────────
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const col    = btn.dataset.col;
+    const filter = btn.dataset.filter;
+    filters[col] = filter;
+    document.querySelectorAll(`[data-col="${col}"].filter-btn`)
+            .forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    render(col);
+  });
+});
+
+// ── Enter key ──────────────────────────────────────────────────────────────────
+document.getElementById('todayInput').addEventListener('keydown',    e => e.key === 'Enter' && addTask('today'));
+document.getElementById('longtermInput').addEventListener('keydown', e => e.key === 'Enter' && addTask('longterm'));
+
+// ── Confetti ───────────────────────────────────────────────────────────────────
+function confetti() {
+  const canvas = document.getElementById('confetti');
+  const ctx    = canvas.getContext('2d');
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const colors = ['#4f8ef7','#a78bfa','#34d399','#fbbf24','#f87171'];
+  const bits   = Array.from({ length: 55 }, () => ({
+    x: Math.random() * canvas.width, y: -10,
+    r: Math.random() * 5 + 3,
+    c: colors[Math.random() * colors.length | 0],
+    vx: (Math.random() - .5) * 3, vy: Math.random() * 4 + 2,
+    a: 1,
+  }));
+
+  let raf;
+  (function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let alive = false;
+    bits.forEach(b => {
+      b.x += b.vx; b.y += b.vy; b.a -= .013;
+      if (b.a > 0) alive = true;
+      ctx.globalAlpha = Math.max(0, b.a);
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+      ctx.fillStyle = b.c;
+      ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    if (alive) raf = requestAnimationFrame(draw);
+    else ctx.clearRect(0, 0, canvas.width, canvas.height);
+  })();
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function uid()   { return Math.random().toString(36).slice(2, 9) + Date.now().toString(36); }
+function esc(s)  { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// ── Notes ingestion panel ──────────────────────────────────────────────────────
+function toggleIngest() {
+  const wrap = document.getElementById('ingestWrap');
+  const btn  = document.getElementById('notesBtn');
+  const open = wrap.classList.toggle('open');
+  btn.classList.toggle('open', open);
+  btn.textContent = open ? '✕ Close Notes' : '📋 Add Notes';
+  if (open) document.getElementById('ingestSource').focus();
+}
+
+function handleFileDrop(e) {
+  e.preventDefault();
+  document.getElementById('ingestDrop').classList.remove('drag-active');
+  const file = e.dataTransfer.files[0];
+  if (file) _readFile(file);
+}
+
+function handleFileSelect(e) {
+  const file = e.target.files[0];
+  if (file) _readFile(file);
+  e.target.value = '';   // reset so same file can be re-selected
+}
+
+function _readFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  const textTypes   = ['txt', 'md'];
+  const serverTypes = ['pdf', 'docx', 'doc'];
+  const label = document.getElementById('ingestDropLabel');
+
+  if (![...textTypes, ...serverTypes].includes(ext)) {
+    toast('Unsupported file type. Please use .pdf, .docx, .txt, or .md.');
+    return;
+  }
+
+  function _prefillSource() {
+    if (!document.getElementById('ingestSource').value)
+      document.getElementById('ingestSource').value =
+        file.name.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+  }
+
+  if (textTypes.includes(ext)) {
+    // Client-side read for plain text
+    const reader = new FileReader();
+    reader.onload = e => {
+      document.getElementById('ingestText').value = e.target.result;
+      _prefillSource();
+      label.textContent =
+        `✓ ${file.name} loaded (${(file.size / 1024).toFixed(1)} KB) — ready to extract`;
+    };
+    reader.readAsText(file);
+  } else {
+    // Server-side extraction for PDF / DOCX
+    label.textContent = `⏳ Extracting text from ${file.name}…`;
+    const reader = new FileReader();
+    reader.onload = async e => {
+      try {
+        const base64 = e.target.result.split(',')[1];
+        const r = await fetch('/api/ingest/extract', {
+          method:  'POST',
+          headers: {'Content-Type': 'application/json'},
+          body:    JSON.stringify({filename: file.name, data: base64}),
+        });
+        const d = await r.json();
+        if (d.ok) {
+          document.getElementById('ingestText').value = d.text;
+          _prefillSource();
+          label.textContent =
+            `✓ ${file.name} — ${(d.chars / 1000).toFixed(1)}k chars extracted — ready to extract`;
+        } else {
+          label.textContent = `✗ ${d.msg}`;
+          toast(d.msg);
+        }
+      } catch (err) {
+        label.textContent = 'Drop a file here (.txt, .md, .pdf, .docx), or click to browse';
+        toast('Server error during text extraction.');
+      }
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+let _ingestPollTimer = null;
+async function submitNotes() {
+  const text   = document.getElementById('ingestText').value.trim();
+  const source = document.getElementById('ingestSource').value.trim() || 'Manual upload';
+  const status = document.getElementById('ingestStatus');
+  const btn    = document.getElementById('extractBtn');
+
+  if (!text) {
+    status.textContent = '⚠ Paste some notes or load a file first.';
+    status.className = 'ingest-status is-err';
+    return;
+  }
+
+  btn.disabled = true;
+  status.textContent = 'Sending to server…';
+  status.className = 'ingest-status';
+
+  try {
+    const r = await fetch('/api/ingest', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ text, source }),
+    });
+    const d = await r.json();
+
+    if (d.ok) {
+      const companion = d.companion;
+      status.textContent = companion
+        ? `✓ Queued! Tasks will appear in ~30 sec as Claude processes it.`
+        : `✓ Queued! Start scan-companion.py in a terminal to process it.`;
+      status.className = 'ingest-status is-ok';
+
+      // Clear inputs on success
+      document.getElementById('ingestText').value   = '';
+      document.getElementById('ingestSource').value = '';
+      document.getElementById('ingestDropLabel').textContent =
+        'Drop a file here (.txt, .md, .pdf, .docx), or click to browse';
+
+      // Poll for new tasks for up to 90 seconds
+      if (_ingestPollTimer) clearInterval(_ingestPollTimer);
+      let polls = 0;
+      _ingestPollTimer = setInterval(async () => {
+        polls++;
+        const latest = await fetchTasks().catch(() => null);
+        if (latest) { state = latest; renderBoth(); }
+        if (polls >= 18) clearInterval(_ingestPollTimer);
+      }, 5000);
+    } else {
+      throw new Error(d.msg || 'Server error');
+    }
+  } catch (err) {
+    status.textContent = `⚠ ${err.message}`;
+    status.className = 'ingest-status is-err';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ── Poll for config + new tasks (catches background scan completions) ──────────
+setInterval(async () => {
+  const cfg = await fetch('/api/config').then(r => r.json()).catch(() => null);
+  if (cfg) renderStatusBar(cfg);
+  // Refresh task list silently
+  const latest = await fetchTasks().catch(() => null);
+  if (latest) { state = latest; renderBoth(); }
+}, 15000);  // every 15 seconds
+
+// ── Boot ───────────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
