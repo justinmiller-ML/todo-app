@@ -270,12 +270,22 @@ def extract_action_items(source_type, content):
         # Corporate footer / legal boilerplate lines
         if re.match(r'^(?:google\s+llc|you\s+have\s+received\s+this\s+email\s+because'
                     r'|this\s+email\s+was\s+sent\s+to|unsubscribe|privacy\s+policy'
-                    r'|©\s*\d{4}|all\s+rights\s+reserved)', line, re.IGNORECASE):
+                    r'|©\s*\d{4}|all\s+rights\s+reserved'
+                    r'|\d+\s+\w+.*(?:ave|blvd|pkwy|way|street|road|drive).*\busa\b'
+                    r'|mountain\s+view|1600\s+amphitheatre)', line, re.IGNORECASE):
+            continue
+        # "Name shared a document/file" — Google Drive share notifications in reply bodies
+        if re.match(r'^[\w\s.\-]+ shared (a |an )?(document|file|folder|spreadsheet|slide)',
+                    line, re.IGNORECASE):
+            continue
+        # "Name (email) has invited you to..." — Google Docs invite lines (no word-count limit)
+        if re.match(r'^[\w\s.\-]+\([\w.\-\+]+@[\w.\-]+\)\s+has\s+(invited|shared)',
+                    line, re.IGNORECASE):
             continue
         # Raw email address lines, or "Name <email>" / "Name (email)" standing alone
         if re.match(r'^[\w\s.\-]+([\(<])[\w.\-\+]+@[\w.\-]+\.(com|net|org|io)[>\)]\s*'
-                    r'(?:has\s+invited|shared|wrote|said)?\s*.*$',
-                    line, re.IGNORECASE) and len(line.split()) <= 12:
+                    r'(?:has\s+invited|shared|wrote|said)?',
+                    line, re.IGNORECASE) and len(line.split()) <= 15:
             continue
         # Standalone email address lines or "email> wrote:" fragments
         if re.match(r'^[\w.\-\+]+@[\w.\-]+\s*', line) and len(line.split()) <= 4:
@@ -441,6 +451,10 @@ def _is_calendar_email(subject, sender):
         'updated invitation', 'updated invitation with note',
         'invitation:', 'forwarded invitation:', 'new event:',
         'proposed new time:', 'new time proposed:', 're: proposed new time:',
+        'document shared with you:', 're: document shared with you:',
+        'fwd: document shared with you:',
+        'shared a file with you:', 're: shared a file with you:',
+        'has shared', 'shared with you:',
     )
     if any(s.startswith(p) for p in skip_prefixes):
         return True
