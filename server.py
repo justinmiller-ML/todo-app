@@ -256,6 +256,9 @@ def extract_action_items(source_type, content):
         if re.match(r'^(?:hi|hello|hey|dear|g\'?day|good\s+(?:morning|afternoon|evening|day))\b',
                     line, re.IGNORECASE) and len(line.split()) <= 20:
             continue
+        # Document byline / attribution lines: "By Justin Miller", "By Justin"
+        if re.match(r'^by\s+[A-Z][a-z]+(\s+[A-Z][a-z]+)*\s*$', line):
+            continue
         # Ownership / role label lines: "Owner: Justin, Drew"
         if re.match(r'^(?:owner|lead|responsible|assignee|poc|dri|point\s+of\s+contact)\s*:',
                     line, re.IGNORECASE):
