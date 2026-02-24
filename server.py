@@ -511,7 +511,7 @@ def scan_email():
     try:
         mail = imaplib.IMAP4_SSL(host, 993)
         mail.login(user, pwd)
-        mail.select('INBOX')
+        mail.select('INBOX', readonly=True)
         _, data = mail.search(None, 'UNSEEN')
         nums = data[0].split()
         if not nums:
