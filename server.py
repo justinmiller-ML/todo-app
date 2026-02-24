@@ -512,12 +512,15 @@ def scan_email():
         mail = imaplib.IMAP4_SSL(host, 993)
         mail.login(user, pwd)
         mail.select('INBOX', readonly=True)
-        _, data = mail.search(None, 'UNSEEN')
+        # Search by date rather than UNSEEN — avoids touching read/unread status entirely.
+        # processed.json is the sole tracker of what we've already handled.
+        since = (datetime.datetime.now() - datetime.timedelta(days=2)).strftime('%d-%b-%Y')
+        _, data = mail.search(None, f'SINCE {since}')
         nums = data[0].split()
         if not nums:
             mail.logout()
             return
-        log(f'[email scan] {len(nums)} unread message(s) to check')
+        log(f'[email scan] {len(nums)} message(s) in last 2 days to check')
         for num in nums[-50:]:
             try:
                 _, msg_data = mail.fetch(num, '(BODY.PEEK[])')
