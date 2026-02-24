@@ -252,12 +252,33 @@ def extract_action_items(source_type, content):
         # Inline image references from email clients
         if re.match(r'^\[image:', line, re.IGNORECASE):
             continue
-        # Email salutation lines: "Hi Justin, Amanda, ..."
-        if re.match(r'^hi\b', line, re.IGNORECASE) and len(line.split()) <= 20:
+        # Email salutation lines: "Hi Justin,", "G'day Justin,", "Hello team,"
+        if re.match(r'^(?:hi|hello|hey|dear|g\'?day|good\s+(?:morning|afternoon|evening|day))\b',
+                    line, re.IGNORECASE) and len(line.split()) <= 20:
             continue
         # Ownership / role label lines: "Owner: Justin, Drew"
         if re.match(r'^(?:owner|lead|responsible|assignee|poc|dri|point\s+of\s+contact)\s*:',
                     line, re.IGNORECASE):
+            continue
+        # Email thread reply headers: "On Tue, Feb 24 at 3:13 AM Someone <email> wrote:"
+        if (re.match(r'^on\s+\w', line, re.IGNORECASE) and
+                re.search(r'wrote:\s*$|<\s*$', line, re.IGNORECASE)):
+            continue
+        # Quoted reply attribution: "someone@domain.com> wrote:"
+        if re.search(r'@[\w.\-]+>\s*wrote:\s*$', line, re.IGNORECASE):
+            continue
+        # Corporate footer / legal boilerplate lines
+        if re.match(r'^(?:google\s+llc|you\s+have\s+received\s+this\s+email\s+because'
+                    r'|this\s+email\s+was\s+sent\s+to|unsubscribe|privacy\s+policy'
+                    r'|©\s*\d{4}|all\s+rights\s+reserved)', line, re.IGNORECASE):
+            continue
+        # Raw email address lines, or "Name <email>" / "Name (email)" standing alone
+        if re.match(r'^[\w\s.\-]+([\(<])[\w.\-\+]+@[\w.\-]+\.(com|net|org|io)[>\)]\s*'
+                    r'(?:has\s+invited|shared|wrote|said)?\s*.*$',
+                    line, re.IGNORECASE) and len(line.split()) <= 12:
+            continue
+        # Standalone email address lines or "email> wrote:" fragments
+        if re.match(r'^[\w.\-\+]+@[\w.\-]+\s*', line) and len(line.split()) <= 4:
             continue
 
         # include next line for context (e.g. "Justin:" then action on next line)
@@ -416,6 +437,7 @@ def _is_calendar_email(subject, sender):
     # Google Calendar invite/acceptance subject prefixes
     skip_prefixes = (
         'accepted:', 'declined:', 'tentative:', 'canceled:', 'cancellation:',
+        'tentatively accepted:', 'tentatively declined:',
         'updated invitation', 'updated invitation with note',
         'invitation:', 'forwarded invitation:', 'new event:',
         'proposed new time:', 'new time proposed:', 're: proposed new time:',
@@ -434,6 +456,10 @@ def _is_calendar_email(subject, sender):
         'noreply@',
         'donotreply@',
         'calendar.google.com',
+        'atlassian.net',       # Confluence / Jira digests
+        'atlassian.com',       # Atlassian notifications
+        'notifications@',      # Generic notification senders
+        'drive-shares-dm-noreply@google.com',  # Google Drive share emails
     )
     return any(x in sender_lc for x in skip_senders)
 
