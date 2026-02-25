@@ -528,9 +528,9 @@ def scan_email():
     try:
         mail = imaplib.IMAP4_SSL(host, 993)
         mail.login(user, pwd)
-        mail.select('INBOX', readonly=True)
-        # Search by date rather than UNSEEN — avoids touching read/unread status entirely.
-        # processed.json is the sole tracker of what we've already handled.
+        # Open read-write so we can restore the \Seen flag if Gmail ignores PEEK
+        mail.select('INBOX', readonly=False)
+        # Search by date — processed.json is the sole tracker of what we've handled.
         since = (datetime.datetime.now() - datetime.timedelta(days=2)).strftime('%d-%b-%Y')
         _, data = mail.search(None, f'SINCE {since}')
         nums = data[0].split()
@@ -540,7 +540,16 @@ def scan_email():
         log(f'[email scan] {len(nums)} message(s) in last 2 days to check')
         for num in nums[-50:]:
             try:
+                # Record whether the email was unread BEFORE we touch it
+                _, flag_data = mail.fetch(num, '(FLAGS)')
+                was_unseen = (flag_data and flag_data[0] and
+                              b'\\Seen' not in flag_data[0])
+
                 _, msg_data = mail.fetch(num, '(BODY.PEEK[])')
+
+                # Gmail sometimes marks as read despite PEEK — restore if needed
+                if was_unseen:
+                    mail.store(num, '-FLAGS', '\\Seen')
                 msg    = email_lib.message_from_bytes(msg_data[0][1])
                 msg_id = msg.get('Message-ID', '').strip()
                 if not msg_id or is_processed(f'email_{msg_id}'):
