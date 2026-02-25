@@ -18,11 +18,22 @@ info "Downloading latest updates from GitHub…"
 git -C "$SCRIPT_DIR" pull --ff-only
 success "Code updated"
 
-# Restart services
+# Restart services — kill ALL existing Python processes for this app to prevent
+# stale old-code processes from accumulating in the background.
 info "Restarting services…"
+
+# 1. Stop via launchctl so it won't immediately respawn
 launchctl stop  "com.${USERNAME}.todo-app"       2>/dev/null || true
 launchctl stop  "com.${USERNAME}.todo-companion"  2>/dev/null || true
 sleep 1
+
+# 2. Force-kill any lingering server.py / scan-companion.py processes
+#    (launchctl stop does not always SIGKILL the Python process)
+pkill -9 -f "${SCRIPT_DIR}/server.py"       2>/dev/null || true
+pkill -9 -f "${SCRIPT_DIR}/scan-companion.py" 2>/dev/null || true
+sleep 1
+
+# 3. Start fresh
 launchctl start "com.${USERNAME}.todo-app"
 launchctl start "com.${USERNAME}.todo-companion"
 sleep 2

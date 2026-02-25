@@ -483,6 +483,7 @@ def _is_calendar_email(subject, sender):
     # Google Calendar invite/acceptance subject prefixes
     skip_prefixes = (
         'accepted:', 'declined:', 'tentative:', 'canceled:', 'cancellation:',
+        'canceled event:', 'cancelled event:', 'cancellation notice:',
         'tentatively accepted:', 'tentatively declined:',
         'updated invitation', 'updated invitation with note',
         'invitation:', 'forwarded invitation:', 'new event:',
