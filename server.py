@@ -293,6 +293,33 @@ def extract_action_items(source_type, content):
         # Standalone email address lines or "email> wrote:" fragments
         if re.match(r'^[\w.\-\+]+@[\w.\-]+\s*', line) and len(line.split()) <= 4:
             continue
+        # Email header lines appearing inside body (quoted / forwarded email blocks)
+        if re.match(r'^(?:from|to|cc|bcc|subject|date|reply-to|message-id|'
+                    r'delivered-to|received|x-[\w-]+)\s*:',
+                    line, re.IGNORECASE):
+            continue
+        # Calendar event field labels: "Organizer:", "When:", "Where:", "Attendees:", etc.
+        if re.match(r'^(?:organizer|when|where|attendees?|time|location|'
+                    r'event(?:\s+title)?|join\s+(?:zoom|the\s+meeting)|'
+                    r'dial[\s\-]?in|conference\s+(?:id|room)|'
+                    r'proposed\s+(?:new\s+)?time|video\s+call|meeting\s+link)\s*[:\-]',
+                    line, re.IGNORECASE):
+            continue
+        # Time-slot-only lines: "8:30am (CDT)", "10:30am - 11am (CST) (Justin Miller)"
+        if re.match(r'^\d{1,2}:\d{2}\s*(?:am|pm)\b', line, re.IGNORECASE):
+            continue
+        # Day-of-week date/time lines: "Tue Apr 28, 2026 9am – 9:30am"
+        if (re.match(r'^(?:mon|tue|wed|thu|fri|sat|sun)\w*\b', line, re.IGNORECASE) and
+                re.search(r'\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b', line, re.IGNORECASE) and
+                len(line.split()) <= 12):
+            continue
+        # Standalone person-name lines: "Justin Miller", "Justin Miller - organizer"
+        # A bare name with no action verb is never an action item.
+        if (re.match(r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\s*(?:[-–]\s*[\w\s]+)?$', line) and
+                len(line.split()) <= 6 and
+                not re.search(r'\b(?:please|must|should|need|action|follow|next\s+step)\b',
+                              line, re.IGNORECASE)):
+            continue
 
         # include next line for context (e.g. "Justin:" then action on next line)
         ctx = line + (' ' + lines[i + 1] if i + 1 < len(lines) else '')
@@ -317,10 +344,16 @@ def extract_action_items(source_type, content):
             ):
                 continue
 
-        # Trigger-only lines must look like real directives, not casual conversation
+        # Trigger-only lines must look like real directives, not casual / marketing language.
+        # "please feel free", "please find", "please visit" are NOT action items for Justin.
         if has_trigger and not has_name:
             if not re.search(
-                r'\b(can you|could you|please|action\s+item|follow[- ]?up|next\s+step|assigned)\b',
+                r'\b(?:can you|could you|'
+                r'please\s+(?:\w+\s+)?(?:do|send|review|confirm|check|let\s+me|'
+                r'update|share|schedule|submit|complete|sign|approve|prepare|'
+                r'create|follow|reply|respond|help|take|get|add|fix|write|provide|'
+                r'reach\s+out|look\s+into|look\s+at|make\s+sure|note\s+that)|'
+                r'action\s+item|follow[- ]?up|next\s+step|assigned)\b',
                 line, re.IGNORECASE,
             ):
                 continue
@@ -461,6 +494,9 @@ def _is_calendar_email(subject, sender):
     )
     if any(s.startswith(p) for p in skip_prefixes):
         return True
+    # Also match calendar phrases anywhere in subject (catches Re:/Fwd: reply chains)
+    if re.search(r'proposed\s+new\s+time|new\s+time\s+proposed|rescheduled?\b', s):
+        return True
     # Self-sent app reminder emails (3pm/9am digests sent to own inbox)
     smtp_user = env('SMTP_USER', '').lower()
     if smtp_user and smtp_user in sender.lower():
@@ -479,6 +515,26 @@ def _is_calendar_email(subject, sender):
         'drive-shares-dm-noreply@google.com',  # Google Drive share emails
     )
     return any(x in sender_lc for x in skip_senders)
+
+# ── Calendar body detector ────────────────────────────────────────────────────
+def _is_calendar_body(body):
+    """Return True if body looks like a calendar/meeting notification,
+    even when it comes from a human sender (e.g. Google's 'proposed new time' replies)."""
+    _CAL_PATTERNS = [
+        r'\bOrganizer\s*:',
+        r'\bWhen\s*:\s+\S',
+        r'\bWhere\s*:\s+\S',
+        r'\bJoin\s+(?:Zoom|Google\s+Meet|the\s+meeting|Teams)\b',
+        r'(?:zoom\.us/j/|meet\.google\.com/|teams\.microsoft\.com)',
+        r'\bVideo\s+call\s+link\b',
+        r'\bProposed\s+new\s+time\b',
+        r'\bConference\s+(?:ID|room|call)\b',
+        r'\bDial-?in\b.*\bnumber\b',
+        r'\bGuests\s+can\b',
+        r'\bGoing\?\s+(?:Yes|No|Maybe)\b',
+    ]
+    hits = sum(1 for p in _CAL_PATTERNS if re.search(p, body, re.IGNORECASE))
+    return hits >= 2
 
 # ── Email scanner ─────────────────────────────────────────────────────────────
 def _decode_header_val(val):
@@ -587,11 +643,44 @@ def scan_email():
                     mark_processed(f'email_{msg_id}')
                     log(f'[email scan] Queued internal broadcast: {subject[:55]}')
                     continue
-                body    = _email_body(msg)
-                content = f'From: {sender}\nSubject: {subject}\n\n{body}'
+                body = _email_body(msg)
+
+                # Skip emails whose body looks like a calendar notification,
+                # even when sent from a real person (e.g. Google Calendar
+                # "proposed new time" replies have a human From: address).
+                if _is_calendar_body(body):
+                    log(f'[email scan] Skipping calendar body: {subject[:55]}')
+                    mark_processed(f'email_{msg_id}')
+                    continue
+
+                # ── External vs internal routing ──────────────────────────
+                # Rule-based extraction is tuned for internal @pactum.com mail.
+                # External emails (cold outreach, marketing, vendor mail) produce
+                # too many false positives, so route them to the AI ingest queue
+                # instead — Claude judges intent far more accurately.
+                _sender_domain_m = re.search(r'@([\w.\-]+)', sender)
+                _sender_domain   = _sender_domain_m.group(1).lower() if _sender_domain_m else ''
+                _is_internal     = 'pactum.com' in _sender_domain
+
+                if not _is_internal:
+                    queue_for_ingestion(
+                        f'From: {sender}\nSubject: {subject}\n\n{body}',
+                        f'Email: {subject[:80]}'
+                    )
+                    mark_processed(f'email_{msg_id}')
+                    log(f'[email scan] Queued external email for AI: {subject[:55]}')
+                    continue
+
+                # Internal @pactum.com email — rule-based extraction.
+                # NOTE: we pass only the body (not the From:/Subject: headers)
+                # because header lines create false-positive name matches
+                # (e.g. "From: Justin Miller <...>" or "Subject: ... Justin ..."
+                # gets extracted as a task).
                 log(f'[email scan] Checking: {subject[:60]}')
-                for item in extract_action_items('email', content):
-                    add_auto_task(item, 'email', f'{subject[:60]} (from {sender})')
+                _sender_display = sender.split('<')[0].strip() or sender
+                for item in extract_action_items('email', body):
+                    add_auto_task(item, 'email',
+                                  f'{subject[:60]} — {_sender_display}')
                 mark_processed(f'email_{msg_id}')
             except Exception as e:
                 log(f'[email scan] Error on message: {e}')
