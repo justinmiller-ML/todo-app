@@ -320,6 +320,14 @@ def extract_action_items(source_type, content):
                 not re.search(r'\b(?:please|must|should|need|action|follow|next\s+step)\b',
                               line, re.IGNORECASE)):
             continue
+        # Lines ending with ":" are section headers / list introducers, not action items
+        # e.g. "The next step is confirming your preferred setup approach:"
+        if line.rstrip().endswith(':'):
+            continue
+        # Lines containing 2+ email addresses — To:/CC: continuation lines from forwarded mail
+        # e.g. "Lehmanc@ccf.org>, <hutchij@ccf.org>, Sara Bunjaku <bunjaks@ccf.org>"
+        if len(re.findall(r'[\w.\-\+]+@[\w.\-]+', line)) >= 2:
+            continue
 
         # include next line for context (e.g. "Justin:" then action on next line)
         ctx = line + (' ' + lines[i + 1] if i + 1 < len(lines) else '')
