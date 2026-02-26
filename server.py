@@ -108,7 +108,11 @@ def load_tasks():
 
 def save_tasks(data):
     with _task_lock:
-        DATA_FILE.write_text(json.dumps(data, indent=2))
+        # Write to a temp file first, then atomically rename — prevents corrupt
+        # tasks.json if the process is killed mid-write or two writers race.
+        tmp = DATA_FILE.with_suffix('.json.tmp')
+        tmp.write_text(json.dumps(data, indent=2))
+        tmp.replace(DATA_FILE)   # atomic on POSIX (macOS/Linux)
 
 # ── Processed-message tracking ────────────────────────────────────────────────
 _proc_lock  = threading.Lock()
