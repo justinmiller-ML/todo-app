@@ -264,8 +264,9 @@ def extract_action_items(source_type, content):
                     line, re.IGNORECASE):
             continue
         # Email thread reply headers: "On Tue, Feb 24 at 3:13 AM Someone <email> wrote:"
+        # Also catches wrapped headers ending with the bare email address e.g. <name@domain>
         if (re.match(r'^on\s+\w', line, re.IGNORECASE) and
-                re.search(r'wrote:\s*$|<\s*$', line, re.IGNORECASE)):
+                re.search(r'wrote:\s*$|<\s*$|@[\w.\-]+>\s*$', line, re.IGNORECASE)):
             continue
         # Quoted reply attribution: "someone@domain.com> wrote:"
         if re.search(r'@[\w.\-]+>\s*wrote:\s*$', line, re.IGNORECASE):
@@ -294,16 +295,24 @@ def extract_action_items(source_type, content):
         if re.match(r'^[\w.\-\+]+@[\w.\-]+\s*', line) and len(line.split()) <= 4:
             continue
         # Email header lines appearing inside body (quoted / forwarded email blocks)
-        if re.match(r'^(?:from|to|cc|bcc|subject|date|reply-to|message-id|'
+        # Allow optional leading ">" chars — quoted blocks use "> From:", "> Date:", etc.
+        if re.match(r'^[>\s]*(?:from|to|cc|bcc|subject|date|reply-to|message-id|'
                     r'delivered-to|received|x-[\w-]+)\s*:',
                     line, re.IGNORECASE):
             continue
         # Calendar event field labels: "Organizer:", "When:", "Where:", "Attendees:", etc.
-        if re.match(r'^(?:organizer|when|where|attendees?|time|location|'
+        if re.match(r'^[>\s]*(?:organizer|when|where|attendees?|time|location|'
                     r'event(?:\s+title)?|join\s+(?:zoom|the\s+meeting)|'
                     r'dial[\s\-]?in|conference\s+(?:id|room)|'
                     r'proposed\s+(?:new\s+)?time|video\s+call|meeting\s+link)\s*[:\-]',
                     line, re.IGNORECASE):
+            continue
+        # Standalone domain / URL lines: "Pactum.com", "www.pactum.ai"
+        if re.match(r'^(?:www\.)?[\w\-]+\.(com|net|org|io|ai|co|us)\s*$', line, re.IGNORECASE):
+            continue
+        # Email signature contact info: phone number paired with email address
+        if (re.search(r'\+?\d[\d\s.\-\(\)]{6,}\d', line) and
+                re.search(r'@[\w.\-]+', line)):
             continue
         # Time-slot-only lines: "8:30am (CDT)", "10:30am - 11am (CST) (Justin Miller)"
         if re.match(r'^\d{1,2}:\d{2}\s*(?:am|pm)\b', line, re.IGNORECASE):
@@ -323,6 +332,14 @@ def extract_action_items(source_type, content):
         # Lines ending with ":" are section headers / list introducers, not action items
         # e.g. "The next step is confirming your preferred setup approach:"
         if line.rstrip().endswith(':'):
+            continue
+        # Line-wrapped sentence fragments — end with a dangling preposition/conjunction,
+        # meaning the sentence continued on the next line in the email.
+        # e.g. "Please let me know your availability and who from Pactum would be best to"
+        if re.search(
+            r'\b(?:to|and|or|but|for|in|of|at|by|from|with|into|onto|over|through|about)\s*$',
+            line, re.IGNORECASE,
+        ) and len(line.split()) >= 5:
             continue
         # Lines containing 2+ email addresses — To:/CC: continuation lines from forwarded mail
         # e.g. "Lehmanc@ccf.org>, <hutchij@ccf.org>, Sara Bunjaku <bunjaks@ccf.org>"
@@ -525,6 +542,48 @@ def _is_calendar_email(subject, sender):
     )
     return any(x in sender_lc for x in skip_senders)
 
+# ── Email quote stripper ──────────────────────────────────────────────────────
+def _strip_email_quotes(body):
+    """Strip quoted reply/forward blocks from an email body.
+
+    Everything from the first Gmail/Outlook reply attribution onwards is
+    quoted content from a *previous* email — not new directives for Justin —
+    and must be excluded from action-item extraction.
+
+    Handles:
+      • Gmail one-liner:  "On Mon, Jan 1 at 12:00 PM Name <email> wrote:"
+      • Gmail wrapped:    "On Mon, Jan 1 at 12:00 PM Name <\n  email> wrote:"
+      • "> "-prefixed quoted lines (any number, any depth)
+      • "---" / "___" signature / quote separators
+    """
+    # 1. Gmail/Outlook "On … wrote:" attribution — find the earliest occurrence
+    m = re.search(
+        r'^On\s+\w[^\n]{5,200}(?:\n[^\n]{0,100})?wrote:\s*$',
+        body, re.IGNORECASE | re.MULTILINE,
+    )
+    if m:
+        body = body[:m.start()]
+
+    # 2. Strip any remaining ">" quoted lines and blank lines that follow them
+    cleaned = []
+    prev_was_quote = False
+    for line in body.split('\n'):
+        if re.match(r'^>+', line.strip()):
+            prev_was_quote = True
+            continue
+        if prev_was_quote and not line.strip():
+            continue          # drop blank lines immediately after a quote block
+        prev_was_quote = False
+        cleaned.append(line)
+    body = '\n'.join(cleaned)
+
+    # 3. Stop at "---" / "___" separator (email signature delimiter)
+    m = re.search(r'\n[-_]{3,}\s*\n', body)
+    if m:
+        body = body[:m.start()]
+
+    return body.strip()
+
 # ── Calendar body detector ────────────────────────────────────────────────────
 def _is_calendar_body(body):
     """Return True if body looks like a calendar/meeting notification,
@@ -685,9 +744,11 @@ def scan_email():
                 # because header lines create false-positive name matches
                 # (e.g. "From: Justin Miller <...>" or "Subject: ... Justin ..."
                 # gets extracted as a task).
+                # Strip quoted reply/forward blocks so we only examine NEW content.
                 log(f'[email scan] Checking: {subject[:60]}')
                 _sender_display = sender.split('<')[0].strip() or sender
-                for item in extract_action_items('email', body):
+                body_new = _strip_email_quotes(body)
+                for item in extract_action_items('email', body_new):
                     add_auto_task(item, 'email',
                                   f'{subject[:60]} — {_sender_display}')
                 mark_processed(f'email_{msg_id}')
