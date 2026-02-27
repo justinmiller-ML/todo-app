@@ -337,11 +337,15 @@ def extract_action_items(source_type, content):
         # e.g. "The next step is confirming your preferred setup approach:"
         if line.rstrip().endswith(':'):
             continue
-        # Line-wrapped sentence fragments — end with a dangling preposition/conjunction,
-        # meaning the sentence continued on the next line in the email.
-        # e.g. "Please let me know your availability and who from Pactum would be best to"
+        # Line-wrapped sentence fragments — end with a word that almost never closes
+        # a complete sentence: prepositions, conjunctions, articles, determiners, pronouns.
+        # e.g. "…who from Pactum would be best to"  (ends with preposition)
+        # e.g. "If at any point you have questions please let me"  (ends with pronoun)
+        # e.g. "Please review the"  (ends with article)
         if re.search(
-            r'\b(?:to|and|or|but|for|in|of|at|by|from|with|into|onto|over|through|about)\s*$',
+            r'\b(?:to|and|or|but|for|in|of|at|by|from|with|into|onto|over|through|about'
+            r'|the|a|an|this|that|these|those|your|our|their|its|my|his|her'
+            r'|me|us|them|him|her)\s*$',
             line, re.IGNORECASE,
         ) and len(line.split()) >= 5:
             continue
