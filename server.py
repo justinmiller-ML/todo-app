@@ -94,11 +94,26 @@ def load_tasks():
         if not DATA_FILE.exists():
             return {'today': [], 'longterm': []}
         try:
-            return json.loads(DATA_FILE.read_text())
+            content = DATA_FILE.read_text()
+            if not content.strip():
+                raise ValueError('empty file')
+            return json.loads(content)
         except Exception as e:
             log(f'[load_tasks] JSON parse error — tasks.json is corrupt: {e}')
-            # Back up the corrupt file so it can be inspected/recovered
             backup = DATA_FILE.with_suffix('.json.corrupt')
+            # ── Recover from existing good backup before overwriting it ────────
+            if backup.exists():
+                try:
+                    data = json.loads(backup.read_text())
+                    if isinstance(data.get('today'), list):
+                        log('[load_tasks] Recovered from .json.corrupt — restoring main file')
+                        tmp = DATA_FILE.with_suffix('.json.tmp')
+                        tmp.write_text(json.dumps(data, indent=2))
+                        tmp.replace(DATA_FILE)
+                        return data
+                except Exception:
+                    pass
+            # ── No valid backup; save corrupt file for inspection ──────────────
             try:
                 DATA_FILE.rename(backup)
                 log(f'[load_tasks] Corrupt file saved to {backup.name}')
