@@ -368,14 +368,28 @@ def extract_action_items(source_type, content):
         # e.g. "Lehmanc@ccf.org>, <hutchij@ccf.org>, Sara Bunjaku <bunjaks@ccf.org>"
         if len(re.findall(r'[\w.\-\+]+@[\w.\-]+', line)) >= 2:
             continue
+        # Slack @mention format: "@Justin Miller <email@domain>" or "@Justin <email>"
+        # This is someone tagging/referencing the user, not assigning a task to them.
+        if re.search(
+            r'@(?:' + re.escape(USER_NAME) + r'|' + re.escape(USER_FIRST) + r')\s*<[\w.+\-]+@[\w.\-]+>',
+            line, re.IGNORECASE,
+        ):
+            continue
 
         # include next line for context (e.g. "Justin:" then action on next line)
         ctx = line + (' ' + lines[i + 1] if i + 1 < len(lines) else '')
 
-        has_name    = bool(_name_re.search(ctx))
-        has_trigger = bool(_trigger_re.search(ctx))
+        has_name_here = bool(_name_re.search(line))   # name in current line only
+        has_name      = bool(_name_re.search(ctx))    # name in current or next line
+        has_trigger   = bool(_trigger_re.search(ctx))
 
         if not (has_name or has_trigger):
+            continue
+
+        # If the name match is ONLY via next-line context (not in current line)
+        # and there's no trigger in either line, skip — the current line is not
+        # directed at the user; only the next line references them.
+        if has_name and not has_name_here and not has_trigger:
             continue
 
         # ── Name-only match refinements ───────────────────────────────────────

@@ -973,15 +973,20 @@ function _readFile(file) {
     // Client-side read for plain text
     const reader = new FileReader();
     reader.onload = e => {
-      document.getElementById('ingestText').value = e.target.result;
+      const content = e.target.result;
+      document.getElementById('ingestText').value = content;
+      _ingestFileText = content;
+      _ingestFileLoading = false;
       _prefillSource();
       label.textContent =
         `✓ ${file.name} loaded (${(file.size / 1024).toFixed(1)} KB) — ready to extract`;
     };
+    _ingestFileLoading = true;
     reader.readAsText(file);
   } else {
     // Server-side extraction for PDF / DOCX
     label.textContent = `⏳ Extracting text from ${file.name}…`;
+    _ingestFileLoading = true;
     const reader = new FileReader();
     reader.onload = async e => {
       try {
@@ -994,14 +999,18 @@ function _readFile(file) {
         const d = await r.json();
         if (d.ok) {
           document.getElementById('ingestText').value = d.text;
+          _ingestFileText = d.text;
+          _ingestFileLoading = false;
           _prefillSource();
           label.textContent =
             `✓ ${file.name} — ${(d.chars / 1000).toFixed(1)}k chars extracted — ready to extract`;
         } else {
+          _ingestFileLoading = false;
           label.textContent = `✗ ${d.msg}`;
           toast(d.msg);
         }
       } catch (err) {
+        _ingestFileLoading = false;
         label.textContent = 'Drop a file here (.txt, .md, .pdf, .docx), or click to browse';
         toast('Server error during text extraction.');
       }
@@ -1011,15 +1020,23 @@ function _readFile(file) {
 }
 
 let _ingestPollTimer = null;
+let _ingestFileText    = null;   // content from last file upload (independent of textarea)
+let _ingestFileLoading = false;  // true while async PDF/DOCX extraction is in flight
+
 async function submitNotes() {
-  const text   = document.getElementById('ingestText').value.trim();
+  const text   = document.getElementById('ingestText').value.trim() || _ingestFileText || '';
   const source = document.getElementById('ingestSource').value.trim() || 'Manual upload';
   const status = document.getElementById('ingestStatus');
   const btn    = document.getElementById('extractBtn');
 
   if (!text) {
-    status.textContent = '⚠ Paste some notes or load a file first.';
-    status.className = 'ingest-status is-err';
+    if (_ingestFileLoading) {
+      status.textContent = '⏳ File is still extracting — please wait a moment.';
+      status.className = 'ingest-status';
+    } else {
+      status.textContent = '⚠ Paste some notes or upload a file first.';
+      status.className = 'ingest-status is-err';
+    }
     return;
   }
 
@@ -1047,6 +1064,8 @@ async function submitNotes() {
       document.getElementById('ingestSource').value = '';
       document.getElementById('ingestDropLabel').textContent =
         'Drop a file here (.txt, .md, .pdf, .docx), or click to browse';
+      _ingestFileText    = null;
+      _ingestFileLoading = false;
 
       // Poll for new tasks for up to 90 seconds
       if (_ingestPollTimer) clearInterval(_ingestPollTimer);
