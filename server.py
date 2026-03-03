@@ -42,6 +42,7 @@ except ImportError:
 BASE_DIR       = pathlib.Path(__file__).parent
 DATA_FILE      = BASE_DIR / 'tasks.json'
 PROCESSED_FILE = BASE_DIR / 'processed.json'
+DELETED_FILE   = BASE_DIR / 'deleted_tasks.json'   # permanently removed task IDs/texts
 ENV_FILE       = BASE_DIR / '.env'
 PUBLIC         = BASE_DIR / 'public'
 LOG_FILE       = BASE_DIR / 'server.log'
@@ -106,6 +107,7 @@ def load_tasks():
                 try:
                     data = json.loads(backup.read_text())
                     if isinstance(data.get('today'), list):
+                        data = _filter_deleted(data)
                         log('[load_tasks] Recovered from .json.corrupt — restoring main file')
                         tmp = DATA_FILE.with_suffix('.json.tmp')
                         tmp.write_text(json.dumps(data, indent=2))
@@ -128,6 +130,70 @@ def save_tasks(data):
         tmp = DATA_FILE.with_suffix('.json.tmp')
         tmp.write_text(json.dumps(data, indent=2))
         tmp.replace(DATA_FILE)   # atomic on POSIX (macOS/Linux)
+
+# ── Deleted-task registry ─────────────────────────────────────────────────────
+# Tracks IDs and text of tasks the user has deliberately removed so they never
+# reappear from backup restores or re-scanning the same source.
+_deleted_lock  = threading.Lock()
+_deleted_ids   = set()
+_deleted_texts = set()
+
+def _load_deleted():
+    global _deleted_ids, _deleted_texts
+    if not DELETED_FILE.exists():
+        return
+    try:
+        items = json.loads(DELETED_FILE.read_text())
+        _deleted_ids   = {item['id']           for item in items if 'id'   in item}
+        _deleted_texts = {item['text'].lower()  for item in items if 'text' in item}
+    except Exception:
+        pass
+
+_load_deleted()
+
+def _track_deletions(old_data, new_data):
+    """Diff old vs new task state; record any removed tasks to DELETED_FILE."""
+    old_by_id = {
+        t['id']: t
+        for col in ('today', 'longterm')
+        for t in old_data.get(col, [])
+        if t.get('id')
+    }
+    new_ids = {
+        t['id']
+        for col in ('today', 'longterm')
+        for t in new_data.get(col, [])
+        if t.get('id')
+    }
+    removed = [old_by_id[i] for i in old_by_id if i not in new_ids]
+    if not removed:
+        return
+    with _deleted_lock:
+        existing = []
+        if DELETED_FILE.exists():
+            try:
+                existing = json.loads(DELETED_FILE.read_text())
+            except Exception:
+                pass
+        existing_ids = {item.get('id') for item in existing}
+        for task in removed:
+            if task['id'] not in existing_ids:
+                existing.append({'id': task['id'], 'text': task.get('text', '')})
+                _deleted_ids.add(task['id'])
+                _deleted_texts.add(task.get('text', '').lower())
+        tmp = DELETED_FILE.with_suffix('.json.tmp')
+        tmp.write_text(json.dumps(existing, indent=2))
+        tmp.replace(DELETED_FILE)
+        log(f'[deleted] Recorded {len(removed)} removed task(s)')
+
+def _filter_deleted(data):
+    """Strip any tasks in the deleted registry from a task dict."""
+    for col in ('today', 'longterm'):
+        data[col] = [
+            t for t in data.get(col, [])
+            if t.get('id') not in _deleted_ids
+        ]
+    return data
 
 # ── Processed-message tracking ────────────────────────────────────────────────
 _proc_lock  = threading.Lock()
@@ -451,6 +517,11 @@ def add_auto_task(item, source, source_detail):
 
     today_str = datetime.date.today().isoformat()
     col       = 'longterm' if (due_date and due_date > today_str) else 'today'
+
+    # Never re-add a task the user has deliberately deleted/cleared
+    if text.lower() in _deleted_texts:
+        log(f'[auto-add] suppressed (previously deleted): {text[:60]}')
+        return
 
     tasks = load_tasks()
     # Deduplicate — skip if same text already exists in either column
@@ -1083,7 +1154,10 @@ class Handler(BaseHTTPRequestHandler):
         p = self.path.split('?')[0]
         if p == '/api/tasks':
             try:
-                save_tasks(json.loads(self._body()))
+                new_data = json.loads(self._body())
+                old_data = load_tasks()
+                _track_deletions(old_data, new_data)
+                save_tasks(new_data)
                 self._json({'ok': True})
             except Exception as e:
                 self._json({'error': str(e)}, 500)
