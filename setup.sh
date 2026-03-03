@@ -27,6 +27,15 @@ info "Install directory : $SCRIPT_DIR"
 info "Running as user   : $USERNAME"
 echo ""
 
+# ── Slack OAuth credentials (set once by app maintainer) ──────────────────────
+# 1. Create a Slack app at https://api.slack.com/apps
+# 2. Add User Token Scope: search:read
+# 3. Add Redirect URL:     http://127.0.0.1:9876/callback
+# 4. Paste your app's Client ID and Client Secret below.
+SLACK_CLIENT_ID=""
+SLACK_CLIENT_SECRET=""
+OAUTH_CALLBACK_PORT=9876
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # STEP 1 — System prerequisites
@@ -194,7 +203,14 @@ if [[ "$SKIP_ENV" == "false" ]]; then
   read -r smtp_host_input
   [[ -n "$smtp_host_input" ]] && SMTP_HOST="$smtp_host_input"
 
-  ask "  Email App Password (input hidden): "
+  echo ""
+  info "Opening Google App Passwords page in your browser…"
+  open "https://myaccount.google.com/apppasswords" 2>/dev/null || true
+  echo "  If it didn't open, go to: myaccount.google.com → Security → App passwords"
+  echo "  1. Under 'App name', type anything — e.g. Todo App"
+  echo "  2. Click Create, then copy the 16-character password shown"
+  echo ""
+  ask "  Gmail App Password (input hidden): "
   read -rs SMTP_PASS
   echo ""
 
@@ -207,49 +223,99 @@ if [[ "$SKIP_ENV" == "false" ]]; then
   read -r SLACK_WEBHOOK
   SLACK_WEBHOOK="${SLACK_WEBHOOK:-}"
 
-  # Slack mention (optional)
-  SLACK_MENTION=""
-  if [[ -n "$SLACK_WEBHOOK" ]]; then
-    ask "  Your Slack user ID for @mentions (e.g. U0A88TGB91T, press Enter to skip): "
-    read -r SLACK_MENTION
-    if [[ -n "$SLACK_MENTION" ]]; then
-      SLACK_MENTION="<@${SLACK_MENTION#<@}"
-      SLACK_MENTION="${SLACK_MENTION%%>*}>"
-    fi
-  fi
-
-  # Slack User Token (for scanning DMs and channels)
-  echo ""
-  echo "  ── Slack scanning (optional) ────────────────────────────────────────"
-  echo "  This lets the app read your Slack DMs and channels to find action"
-  echo "  items assigned to you. Requires a one-time token from Slack."
-  echo ""
-  echo "  How to get your Slack User OAuth Token:"
-  echo "   1. Go to: https://api.slack.com/apps"
-  echo "   2. Click 'Create New App' → 'From scratch'"
-  echo "   3. Name it anything (e.g. 'Todo Scanner'), select your workspace"
-  echo "   4. In the left menu, click 'OAuth & Permissions'"
-  echo "   5. Scroll to 'User Token Scopes' and add: search:read"
-  echo "   6. Scroll back to the top and click 'Install to Workspace'"
-  echo "   7. Copy the 'User OAuth Token' — it starts with xoxp-"
-  echo ""
-  ask "  Slack User OAuth Token (xoxp-..., press Enter to skip): "
-  read -rs SLACK_USER_TOKEN
-  echo ""
-  SLACK_USER_TOKEN="${SLACK_USER_TOKEN:-}"
-
+  # Slack OAuth — open browser, capture token + user ID automatically
+  SLACK_USER_TOKEN=""
   SLACK_USER_ID=""
-  if [[ -n "$SLACK_USER_TOKEN" ]]; then
+  SLACK_MENTION=""
+
+  if [[ -n "$SLACK_CLIENT_ID" && -n "$SLACK_CLIENT_SECRET" ]]; then
     echo ""
-    echo "  Your Slack User ID (looks like U0A88TGB91T):"
-    echo "   1. Open Slack"
-    echo "   2. Click your profile picture (top right)"
-    echo "   3. Click 'Profile'"
-    echo "   4. Click the '...' menu → 'Copy member ID'"
+    echo "  ── Slack scanning ──────────────────────────────────────────────────"
+    info "Opening Slack authorization in your browser…"
+    echo "  Log into Slack if prompted, then click Allow."
+    echo "  Waiting up to 2 minutes for you to authorize…"
     echo ""
-    ask "  Your Slack User ID: "
-    read -r SLACK_USER_ID
-    SLACK_USER_ID="${SLACK_USER_ID:-}"
+
+    OAUTH_JSON=$("$PYTHON_BIN" - "$SLACK_CLIENT_ID" "$SLACK_CLIENT_SECRET" "$OAUTH_CALLBACK_PORT" <<'PYEOF'
+import http.server, urllib.parse, urllib.request, json, webbrowser, sys
+
+client_id     = sys.argv[1]
+client_secret = sys.argv[2]
+port          = int(sys.argv[3])
+redirect_uri  = f"http://127.0.0.1:{port}/callback"
+
+auth_url = (
+    "https://slack.com/oauth/v2/authorize"
+    f"?client_id={urllib.parse.quote(client_id)}"
+    f"&user_scope=search%3Aread"
+    f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
+)
+
+result = {}
+
+class _H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        parsed = urllib.parse.urlparse(self.path)
+        params = urllib.parse.parse_qs(parsed.query)
+        if parsed.path == '/callback' and 'code' in params:
+            code = params['code'][0]
+            data = urllib.parse.urlencode({
+                'code': code, 'client_id': client_id,
+                'client_secret': client_secret, 'redirect_uri': redirect_uri,
+            }).encode()
+            try:
+                req = urllib.request.Request('https://slack.com/api/oauth.v2.access', data=data)
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    resp = json.loads(r.read())
+                if resp.get('ok') and resp.get('authed_user', {}).get('access_token'):
+                    result['token']   = resp['authed_user']['access_token']
+                    result['user_id'] = resp['authed_user']['id']
+                    body = b'<html><body style="font-family:sans-serif;padding:40px"><h2>Connected! You can close this tab and return to the terminal.</h2></body></html>'
+                    self.send_response(200)
+                else:
+                    result['error'] = resp.get('error', 'unknown')
+                    body = b'<html><body><h2>Authorization failed. Return to the terminal.</h2></body></html>'
+                    self.send_response(400)
+            except Exception as e:
+                result['error'] = str(e)
+                body = b'<html><body><h2>Error. Return to the terminal.</h2></body></html>'
+                self.send_response(500)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+    def log_message(self, *args): pass
+
+try:
+    httpd = http.server.HTTPServer(('localhost', port), _H)
+except OSError:
+    print('{}')
+    sys.exit(0)
+
+webbrowser.open(auth_url)
+httpd.timeout = 120
+httpd.handle_request()
+print(json.dumps(result))
+PYEOF
+    ) || true
+
+    SLACK_USER_TOKEN=$(echo "$OAUTH_JSON" | "$PYTHON_BIN" -c \
+      "import json,sys; d=json.loads(sys.stdin.read() or '{}'); print(d.get('token',''))" 2>/dev/null || echo "")
+    SLACK_USER_ID=$(echo "$OAUTH_JSON" | "$PYTHON_BIN" -c \
+      "import json,sys; d=json.loads(sys.stdin.read() or '{}'); print(d.get('user_id',''))" 2>/dev/null || echo "")
+
+    if [[ -n "$SLACK_USER_TOKEN" ]]; then
+      success "Slack connected (User ID: $SLACK_USER_ID)"
+      # Auto-set @mention format if they also provided a webhook
+      [[ -n "$SLACK_WEBHOOK" && -n "$SLACK_USER_ID" ]] && SLACK_MENTION="<@${SLACK_USER_ID}>"
+    else
+      warn "Slack authorization did not complete — Slack scanning will be disabled."
+      warn "You can add it later by re-running setup.sh"
+    fi
+  else
+    warn "Slack OAuth not configured — Slack scanning will be disabled."
   fi
 
   # Write .env

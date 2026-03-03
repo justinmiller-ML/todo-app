@@ -426,7 +426,8 @@ def extract_action_items(source_type, content):
         if re.search(
             r'\b(?:to|and|or|but|for|in|of|at|by|from|with|into|onto|over|through|about'
             r'|the|a|an|this|that|these|those|your|our|their|its|my|his|her'
-            r'|me|us|them|him|her)\s*$',
+            r'|me|us|them|him|her'
+            r'|is|are|was|were|be|been)\s*$',
             line, re.IGNORECASE,
         ) and len(line.split()) >= 5:
             continue
@@ -486,6 +487,12 @@ def extract_action_items(source_type, content):
             ):
                 continue
             if len(line.split()) < 5:
+                continue
+            # "Can you take a look at this" — vague conversational request, never a task
+            if re.search(r'\bcan you take a look at this\b', line, re.IGNORECASE):
+                continue
+            # "Can you [help/support/tell] me" — generic conversational asks
+            if re.search(r'\bcan you (?:help|support|tell) (?:me|us)\b', line, re.IGNORECASE):
                 continue
 
         due      = _extract_due(ctx)
