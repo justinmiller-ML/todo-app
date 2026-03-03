@@ -3,7 +3,7 @@
 # New users run:  bash <(curl -fsSL https://raw.githubusercontent.com/GITHUB_USER/REPO_NAME/main/install.sh)
 set -euo pipefail
 
-REPO_URL="https://github.com/GITHUB_USER/REPO_NAME.git"
+REPO_URL="https://github.com/justinmiller-ML/todo-app.git"
 INSTALL_DIR="$HOME/todo-app"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'

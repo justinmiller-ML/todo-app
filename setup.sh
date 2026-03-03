@@ -212,8 +212,44 @@ if [[ "$SKIP_ENV" == "false" ]]; then
   if [[ -n "$SLACK_WEBHOOK" ]]; then
     ask "  Your Slack user ID for @mentions (e.g. U0A88TGB91T, press Enter to skip): "
     read -r SLACK_MENTION
-    [[ -n "$SLACK_MENTION" ]] && SLACK_MENTION="<@${SLACK_MENTION#<@}"; SLACK_MENTION="${SLACK_MENTION%%>*}>"
-    SLACK_MENTION="${SLACK_MENTION:-}"
+    if [[ -n "$SLACK_MENTION" ]]; then
+      SLACK_MENTION="<@${SLACK_MENTION#<@}"
+      SLACK_MENTION="${SLACK_MENTION%%>*}>"
+    fi
+  fi
+
+  # Slack User Token (for scanning DMs and channels)
+  echo ""
+  echo "  ── Slack scanning (optional) ────────────────────────────────────────"
+  echo "  This lets the app read your Slack DMs and channels to find action"
+  echo "  items assigned to you. Requires a one-time token from Slack."
+  echo ""
+  echo "  How to get your Slack User OAuth Token:"
+  echo "   1. Go to: https://api.slack.com/apps"
+  echo "   2. Click 'Create New App' → 'From scratch'"
+  echo "   3. Name it anything (e.g. 'Todo Scanner'), select your workspace"
+  echo "   4. In the left menu, click 'OAuth & Permissions'"
+  echo "   5. Scroll to 'User Token Scopes' and add: search:read"
+  echo "   6. Scroll back to the top and click 'Install to Workspace'"
+  echo "   7. Copy the 'User OAuth Token' — it starts with xoxp-"
+  echo ""
+  ask "  Slack User OAuth Token (xoxp-..., press Enter to skip): "
+  read -rs SLACK_USER_TOKEN
+  echo ""
+  SLACK_USER_TOKEN="${SLACK_USER_TOKEN:-}"
+
+  SLACK_USER_ID=""
+  if [[ -n "$SLACK_USER_TOKEN" ]]; then
+    echo ""
+    echo "  Your Slack User ID (looks like U0A88TGB91T):"
+    echo "   1. Open Slack"
+    echo "   2. Click your profile picture (top right)"
+    echo "   3. Click 'Profile'"
+    echo "   4. Click the '...' menu → 'Copy member ID'"
+    echo ""
+    ask "  Your Slack User ID: "
+    read -r SLACK_USER_ID
+    SLACK_USER_ID="${SLACK_USER_ID:-}"
   fi
 
   # Write .env
@@ -238,8 +274,8 @@ SLACK_MENTION=${SLACK_MENTION}
 # ── Slack scanning (optional) ─────────────────────────────────────────────────
 # Needs a User OAuth Token (xoxp-...) with search:read scope
 # Get from: api.slack.com → Your App → OAuth & Permissions → User Token
-SLACK_USER_TOKEN=
-SLACK_USER_ID=
+SLACK_USER_TOKEN=${SLACK_USER_TOKEN}
+SLACK_USER_ID=${SLACK_USER_ID}
 
 # ── Gong scanning (optional) ──────────────────────────────────────────────────
 GONG_API_KEY=
