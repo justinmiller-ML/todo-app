@@ -442,6 +442,13 @@ def extract_action_items(source_type, content):
             line, re.IGNORECASE,
         ):
             continue
+        # Automated service notification prefixes — DocuSign, calendar invites, etc.
+        # e.g. "DocuSign: Please confirm if you would like to use DocuSign to finalize"
+        if re.match(r'^(?:DocuSign|Zoom|Calendly|Webex|Microsoft\s+Teams?)\s*:', line, re.IGNORECASE):
+            continue
+        # Generic "please confirm if you would like" — DocuSign/service boilerplate
+        if re.search(r'\bplease confirm if you would like\b', line, re.IGNORECASE):
+            continue
 
         # include next line for context (e.g. "Justin:" then action on next line)
         ctx = line + (' ' + lines[i + 1] if i + 1 < len(lines) else '')
