@@ -96,7 +96,6 @@ The wizard will ask for:
 - **Gmail App Password** — your browser will open to the App Passwords page automatically. Create one, copy it, and paste it here. Nothing will appear as you type — that's normal for password fields.
 - **Reminder email** — press Enter to use your same email address
 - **Slack Webhook URL** — optional, for reminder notifications. Press Enter to skip.
-- **Slack authorization** — your browser will open a Slack page automatically. Log into Slack if prompted, then click **Allow**. The installer captures your token and sets everything up — no manual steps.
 
 ---
 
@@ -165,7 +164,7 @@ Find the `SMTP_PASS=` line, replace the value with your correct App Password, sa
 
 **Slack scan isn't working**
 
-Your Slack token may have expired. Re-run `bash ~/todo-app/setup.sh` — it will go through the Slack authorization again and update your token automatically.
+The Slack connection runs through Claude Code's built-in Slack integration. Make sure Claude Code is open and running in the background. If the issue persists, re-run `bash ~/todo-app/setup.sh` — it will reconnect Slack automatically.
 
 ---
 
