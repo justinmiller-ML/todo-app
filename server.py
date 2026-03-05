@@ -442,6 +442,17 @@ def extract_action_items(source_type, content):
             line, re.IGNORECASE,
         ):
             continue
+        # Email salutation lines: "Anne, Justin," / "Dear Justin," / "Hi Justin,"
+        # Short lines ending with a comma and no action verb — just a greeting.
+        if (line.endswith(',')
+                and len(line.split()) <= 5
+                and not re.search(
+                    r'\b(?:please|will|can|should|need|must|have|has|send|review|'
+                    r'check|update|schedule|follow|reach|share|confirm|complete|'
+                    r'prepare|submit|create|reply|respond|help|fix|add|get|do)\b',
+                    line, re.IGNORECASE,
+                )):
+            continue
         # Automated service notification prefixes — DocuSign, calendar invites, etc.
         # e.g. "DocuSign: Please confirm if you would like to use DocuSign to finalize"
         if re.match(r'^(?:DocuSign|Zoom|Calendly|Webex|Microsoft\s+Teams?)\s*:', line, re.IGNORECASE):
