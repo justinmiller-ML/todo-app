@@ -191,6 +191,16 @@
     .task-body { flex: 1; min-width: 0; }
     .task-text { font-size: .86rem; line-height: 1.45; word-break: break-word; }
     .task.done .task-text { text-decoration: line-through; }
+
+    /* Inline edit input */
+    .task-text-edit {
+      width: 100%; background: transparent; border: none;
+      border-bottom: 1px solid var(--border-hover);
+      color: var(--text); font-size: .86rem; line-height: 1.45;
+      padding: 0 0 2px; outline: none; font-family: inherit;
+    }
+    .today    .task-text-edit:focus { border-bottom-color: var(--accent-today); }
+    .longterm .task-text-edit:focus { border-bottom-color: var(--accent-long); }
     .task-meta { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; align-items: center; }
 
     /* Tags */
@@ -489,9 +499,10 @@
 
 <script>
 // ── State ──────────────────────────────────────────────────────────────────────
-let state   = { today: [], longterm: [] };
-let filters = { today: 'all', longterm: 'all' };
+let state     = { today: [], longterm: [] };
+let filters   = { today: 'all', longterm: 'all' };
 let dragState = null;   // { col, id } while drag is in progress
+let editState = null;   // { col, id } while a task is being edited
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 async function init() {
@@ -629,7 +640,7 @@ function scheduleLocalNotification() {
 
 // ── Render ─────────────────────────────────────────────────────────────────────
 function renderBoth() {
-  if (dragState) return;
+  if (dragState || editState) return;
   render('today');
   render('longterm');
 }
@@ -704,6 +715,8 @@ function taskHTML(col, t) {
         ${sourceDetail}
       </div>
       <div class="task-actions">
+        <button class="task-btn" title="Edit"
+                onclick="event.stopPropagation(); startEdit('${col}','${t.id}')">✎</button>
         <button class="task-btn" title="${moveTitle}"
                 onclick="event.stopPropagation(); moveTask('${col}','${t.id}','${moveTo}')">${moveIcon}</button>
         <button class="task-btn del" title="Delete"
@@ -772,6 +785,55 @@ function clearDone(col) {
   toast(`Cleared ${count} completed task(s).`);
 }
 
+// ── Inline editing ─────────────────────────────────────────────────────────────
+function startEdit(col, id) {
+  const taskEl = document.querySelector(`.task[data-id="${id}"]`);
+  if (!taskEl) return;
+  const textEl = taskEl.querySelector('.task-text');
+  if (!textEl) return;
+
+  editState = { col, id };
+  taskEl.draggable = false;
+
+  const originalText = state[col].find(t => t.id === id)?.text || '';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'task-text-edit';
+  input.value = originalText;
+  textEl.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let committed = false;
+
+  const doSave = () => {
+    if (committed) return;
+    committed = true;
+    const newText = input.value.trim();
+    editState = null;
+    if (newText && newText !== originalText) {
+      const t = state[col].find(x => x.id === id);
+      if (t) t.text = newText;
+      pushTasks();
+    }
+    render(col);
+  };
+
+  const doCancel = () => {
+    if (committed) return;
+    committed = true;
+    editState = null;
+    render(col);
+  };
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); doSave(); }
+    if (e.key === 'Escape') { e.preventDefault(); doCancel(); }
+  });
+  input.addEventListener('blur', doSave);
+}
+
 // ── Drag and drop ──────────────────────────────────────────────────────────────
 function setupDragListeners(col) {
   const list = document.getElementById(`${col}List`);
@@ -794,6 +856,7 @@ function setupDragListeners(col) {
     document.querySelectorAll('.task-list.drag-over')
             .forEach(el => el.classList.remove('drag-over'));
     dragState = null;
+    renderBoth();   // covers cancelled drags; no-op if drop already rendered
   });
 
   list.addEventListener('dragover', e => {
@@ -854,6 +917,7 @@ function setupDragListeners(col) {
       state[toCol].push(movedTask);
     }
 
+    dragState = null;   // clear before render so renderBoth() isn't skipped
     pushTasks();
     renderBoth();
   });
