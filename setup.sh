@@ -487,6 +487,7 @@ cat > "$COMPANION_PLIST" << EOF
     <key>ProgramArguments</key>
     <array>
         <string>${PYTHON_BIN}</string>
+        <string>-u</string>
         <string>${SCRIPT_DIR}/scan-companion.py</string>
     </array>
 

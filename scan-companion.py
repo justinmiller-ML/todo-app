@@ -28,8 +28,9 @@ TROUBLESHOOTING
       Workaround: the notes ingest still works (uses only Read/Write tools), so you
       can paste transcripts via the browser UI and they'll be processed correctly.
       For Slack, paste .scan-prompt.txt into a Claude Code chat window.
-• "Binary not found"    → Update CLAUDE_BIN below.
-      Find it: ls ~/Library/Application\ Support/Claude/claude-code/
+• "Binary not found"    → Claude may not be installed, or installed in an unexpected path.
+      Check: ls ~/Library/Application\ Support/Claude/claude-code/
+      The binary is auto-detected on startup; re-running this script picks up any new version.
 • "Cannot be launched inside another Claude Code session"
       → Run this script from a plain Terminal tab, not from Claude Code's terminal.
 """
@@ -42,6 +43,8 @@ import datetime
 import pathlib
 import random
 import string
+import glob
+import shutil
 
 # ── Config ────────────────────────────────────────────────────────────────────
 BASE_DIR         = pathlib.Path(__file__).parent
@@ -51,9 +54,19 @@ ALIVE_FILE       = BASE_DIR / '.scan-companion-alive'
 PROMPT_FILE      = BASE_DIR / '.scan-prompt.txt'   # fallback: paste into Claude Code
 TASKS_FILE       = BASE_DIR / 'tasks.json'
 
-CLAUDE_BIN = os.path.expanduser(
-    '~/Library/Application Support/Claude/claude-code/2.1.49/claude'
-)
+def _find_claude_bin():
+    """Find the latest installed Claude CLI binary automatically.
+    Claude auto-updates frequently — this avoids hardcoding a version path."""
+    pattern = os.path.expanduser(
+        '~/Library/Application Support/Claude/claude-code/*/claude'
+    )
+    candidates = sorted(glob.glob(pattern))
+    if candidates:
+        return candidates[-1]
+    # Fallback to PATH
+    return shutil.which('claude') or ''
+
+CLAUDE_BIN = _find_claude_bin()
 
 # MCP server UUID — matches the Slack MCP server configured in Claude Code.
 # If tool names ever change (e.g. after a Claude Code update), update this UUID.

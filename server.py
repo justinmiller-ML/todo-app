@@ -460,6 +460,10 @@ def extract_action_items(source_type, content):
         # Generic "please confirm if you would like" — DocuSign/service boilerplate
         if re.search(r'\bplease confirm if you would like\b', line, re.IGNORECASE):
             continue
+        # Markdown/Slack bold-labeled questions: "*WACC:* Could you confirm...?"
+        # These are topic bullets in email threads, not direct task assignments.
+        if re.match(r'^\*[^*\n]+\*:?\s+', line) and line.rstrip().endswith('?'):
+            continue
 
         # include next line for context (e.g. "Justin:" then action on next line)
         ctx = line + (' ' + lines[i + 1] if i + 1 < len(lines) else '')
